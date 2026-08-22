@@ -1,0 +1,6 @@
+path: /Users/satyasivasundarsalagrama/projects/DG/pms/backend/training/data/augmented/detection
+train: train/images
+val: val/images
+test: test/images
+nc: 1
+names: ['license_plate']

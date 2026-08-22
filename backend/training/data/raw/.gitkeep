@@ -1,0 +1,2 @@
+# Place raw vehicle/plate images here (.jpg, .png)
+# Then create YOLO annotations in training/data/annotations/

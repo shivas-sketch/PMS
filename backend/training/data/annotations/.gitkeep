@@ -1,0 +1,4 @@
+# YOLO format annotations: one .txt per image
+# Each line: class x_center y_center width height (normalized 0-1)
+# For license plates, class is always 0
+# Example: 0 0.5 0.7 0.3 0.1

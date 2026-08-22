@@ -1,0 +1,34 @@
+# --- Core API (lightweight, always required) ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+pydantic==2.10.4
+pydantic-settings==2.7.0
+python-dotenv==1.0.1
+httpx==0.28.1
+
+# --- Image processing (lightweight) ---
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
+
+# --- Firestore ---
+firebase-admin==6.6.0
+
+# --- Computer vision / OCR (heavy - large downloads, first run may also
+#     fetch pretrained weights over the network) ---
+ultralytics==8.3.51
+paddleocr==2.9.1
+paddlepaddle==3.0.0
+easyocr==1.7.2
+fast-alpr[onnx]==0.4.0
+
+# --- Testing ---
+pytest==8.3.4
+pytest-asyncio==0.25.0
+
+# NOTE: paddlepaddle's published wheels can lag behind the newest CPython
+# release. If `pip install paddlepaddle` fails on your interpreter, either
+# use Python 3.11/3.12 for the backend venv, or simply leave paddlepaddle/
+# paddleocr uninstalled - OCRService automatically falls back to EasyOCR,
+# and the API stays fully functional (with a logged warning) even if
+# neither OCR engine is installed.

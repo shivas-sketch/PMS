@@ -1,0 +1,3 @@
+# Cropped plate images for recognition training
+# Each line in labels.txt: filename,PLATE_TEXT
+# Example: img001_plate0.jpg,TN09BK1883
