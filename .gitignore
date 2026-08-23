@@ -12,6 +12,12 @@
 
 # Frontend
 /frontend/node_modules/
+
+# Deployment / SSH keys
+*.pem
+ssh-key-*
+*.key
+
 /frontend/dist/
 /frontend/.env
 /frontend/.env.local
