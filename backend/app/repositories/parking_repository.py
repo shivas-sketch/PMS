@@ -338,8 +338,10 @@ class ParkingRepository:
         return payload
 
     def list_slots(self, area_id: str) -> List[dict]:
-        docs = list(self._slots_ref().where("areaId", "==", area_id).order_by("slotNumber").stream())
-        return [doc.to_dict() for doc in docs]
+        docs = list(self._slots_ref().where("areaId", "==", area_id).stream())
+        slots = [doc.to_dict() for doc in docs]
+        slots.sort(key=lambda s: s.get("slotNumber", ""))
+        return slots
 
     def delete_slot(self, slot_id: str) -> None:
         snapshot = self._slot_ref(slot_id).get()
