@@ -119,8 +119,8 @@ export function RecognitionPage() {
     try {
       const body: AddVehicleRequest = {
         vehicleNumber,
-        wheelCategory: result.wheelCategory,
-        vehicleType: result.vehicleType,
+        wheelCategory: result!.wheelCategory,
+        vehicleType: result!.vehicleType,
         hospitalSide: hospitalSide || undefined,
       };
       const session = await post<ParkingSession>('/parking/vehicles', body);
