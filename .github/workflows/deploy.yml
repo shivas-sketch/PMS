@@ -37,6 +37,15 @@ jobs:
             sudo systemctl restart pms-backend
             sudo systemctl reload nginx
 
-            # Health check
-            sleep 5
+            # Health check with retries (backend can take 10-30s to start ML models)
+            for i in {1..30}; do
+              if curl -sf http://localhost:80/api/parking/capacity >/dev/null; then
+                echo 'Health check passed'
+                break
+              fi
+              echo "Health check attempt $i failed, retrying..."
+              sleep 2
+            done
+
+            # Final check
             curl -sf http://localhost:80/api/parking/capacity
