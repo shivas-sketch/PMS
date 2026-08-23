@@ -1,0 +1,42 @@
+name: Deploy to AWS EC2
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.AWS_HOST }}
+          username: ${{ secrets.AWS_USER }}
+          key: ${{ secrets.AWS_SSH_KEY }}
+          port: 22
+          script_stop: true
+          script: |
+            set -e
+            cd /home/ubuntu/pms
+
+            # Pull latest code
+            git pull
+
+            # Build frontend
+            cd /home/ubuntu/pms/frontend
+            npm install
+            npm run build
+
+            # Update backend dependencies and restart
+            cd /home/ubuntu/pms/backend
+            source .venv/bin/activate
+            pip install -r requirements.txt
+
+            # Restart services
+            sudo systemctl restart pms-backend
+            sudo systemctl reload nginx
+
+            # Health check
+            sleep 5
+            curl -sf http://localhost:80/api/parking/capacity
