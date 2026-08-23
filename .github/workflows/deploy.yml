@@ -15,17 +15,17 @@ jobs:
           username: ${{ secrets.AWS_USER }}
           key: ${{ secrets.AWS_SSH_KEY }}
           port: 22
-          script_stop: true
           script: |
             set -e
             cd /home/ubuntu/pms
 
-            # Pull latest code
-            git pull
+            # Force VM to match latest main branch
+            git fetch origin
+            git reset --hard origin/main
 
             # Build frontend
             cd /home/ubuntu/pms/frontend
-            npm install
+            npm ci
             npm run build
 
             # Update backend dependencies and restart
