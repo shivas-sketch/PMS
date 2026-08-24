@@ -171,3 +171,23 @@ export type UpdateSlotRequest = {
   slotNumber?: string | null;
   status?: SlotStatus | null;
 };
+
+export type AlertSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export type ParkingAlert = {
+  alertId: string;
+  threshold: number;
+  occupiedSlots: number;
+  totalCapacity: number;
+  occupancyPercent: number;
+  severity: AlertSeverity;
+  message: string;
+  read: boolean;
+  createdAt: string;
+  readAt?: string | null;
+};
+
+export type AlertList = {
+  alerts: ParkingAlert[];
+  count: number;
+};
