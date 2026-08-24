@@ -4,7 +4,6 @@ import {
   Avatar,
   Badge,
   Box,
-  Chip,
   Divider,
   Drawer,
   IconButton,
@@ -27,10 +26,11 @@ import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined';
 import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined';
 import LocalHospitalOutlinedIcon from '@mui/icons-material/LocalHospitalOutlined';
 import ViewQuiltOutlinedIcon from '@mui/icons-material/ViewQuiltOutlined';
+import CloseOutlinedIcon from '@mui/icons-material/CloseOutlined';
 import { get, post } from '../api/client';
 import type { AlertList, ParkingAlert, AlertSeverity } from '../types';
 
-export type Page = 'dashboard' | 'recognition' | 'parking' | 'layout' | 'lookup';
+export type Page = 'dashboard' | 'recognition' | 'parking' | 'layout' | 'lookup' | 'alerts';
 
 type Props = {
   page: Page;
@@ -48,6 +48,7 @@ const nav: { page: Page; label: string; icon: ReactNode }[] = [
   { page: 'parking', label: 'Parking', icon: <LocalParkingOutlinedIcon /> },
   { page: 'layout', label: 'Layout', icon: <ViewQuiltOutlinedIcon /> },
   { page: 'lookup', label: 'Lookup', icon: <SearchOutlinedIcon /> },
+  { page: 'alerts', label: 'Alerts', icon: <NotificationsOutlinedIcon /> },
 ];
 
 export function AppShell({ page, onPageChange, mode, toggleMode, children }: Props) {
@@ -167,7 +168,6 @@ export function AppShell({ page, onPageChange, mode, toggleMode, children }: Pro
                       bgcolor: alert.read ? 'transparent' : 'action.hover',
                       '&:hover': alert.read ? {} : { bgcolor: 'action.selected' },
                     }}
-                    onClick={() => !alert.read && handleMarkRead(alert.alertId)}
                   >
                     <Stack direction="row" spacing={1} alignItems="flex-start">
                       <Box
@@ -180,7 +180,10 @@ export function AppShell({ page, onPageChange, mode, toggleMode, children }: Pro
                           bgcolor: severityColor[alert.severity],
                         }}
                       />
-                      <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+                      <Box
+                        sx={{ minWidth: 0, flexGrow: 1, cursor: alert.read ? 'default' : 'pointer' }}
+                        onClick={() => !alert.read && handleMarkRead(alert.alertId)}
+                      >
                         <Typography variant="body2" fontWeight={600} sx={{ wordBreak: 'break-word' }}>
                           {alert.message}
                         </Typography>
@@ -188,14 +191,17 @@ export function AppShell({ page, onPageChange, mode, toggleMode, children }: Pro
                           {new Date(alert.createdAt).toLocaleString()}
                         </Typography>
                       </Box>
-                      {!alert.read && (
-                        <Chip
-                          label="New"
-                          size="small"
-                          color="error"
-                          sx={{ height: 20, fontSize: '0.7rem' }}
-                        />
-                      )}
+                      <IconButton
+                        size="small"
+                        aria-label="Dismiss notification"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMarkRead(alert.alertId);
+                        }}
+                        sx={{ p: 0.5, mt: -0.25 }}
+                      >
+                        <CloseOutlinedIcon fontSize="small" />
+                      </IconButton>
                     </Stack>
                   </Box>
                 ))}
@@ -236,7 +242,10 @@ export function AppShell({ page, onPageChange, mode, toggleMode, children }: Pro
               sx={{ mx: 1, borderRadius: 2 }}
             >
               <ListItemIcon>{item.icon}</ListItemIcon>
-              <ListItemText primary={item.label} />
+              <ListItemText primary={item.label} sx={{ mr: item.page === 'alerts' && unreadCount > 0 ? 1 : 0 }} />
+              {item.page === 'alerts' && unreadCount > 0 && (
+                <Badge badgeContent={unreadCount} color="error" />
+              )}
             </ListItemButton>
           ))}
         </List>

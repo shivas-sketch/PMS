@@ -7,6 +7,7 @@ import { RecognitionPage } from './pages/RecognitionPage';
 import { ParkingPage } from './pages/ParkingPage';
 import { ParkingLayoutPage } from './pages/ParkingLayoutPage';
 import { LookupPage } from './pages/LookupPage';
+import { AlertsPage } from './pages/AlertsPage';
 
 export function App() {
   const [page, setPage] = useState<Page>('dashboard');
@@ -20,6 +21,7 @@ export function App() {
     page === 'recognition' ? <RecognitionPage /> :
     page === 'parking' ? <ParkingPage /> :
     page === 'layout' ? <ParkingLayoutPage /> :
+    page === 'alerts' ? <AlertsPage /> :
     <LookupPage />;
 
   return (
