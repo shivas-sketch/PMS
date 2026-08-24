@@ -195,3 +195,23 @@ class ParkingTimelineEventResponse(CamelModel):
 class ParkingTimelineListResponse(CamelModel):
     events: List[ParkingTimelineEventResponse] = Field(default_factory=list)
     count: int = 0
+
+
+# --- capacity alerts ----------------------------------------------------
+
+class AlertResponse(CamelModel):
+    alert_id: str
+    threshold: int
+    occupied_slots: int
+    total_capacity: int
+    occupancy_percent: float
+    severity: str
+    message: str
+    read: bool = False
+    created_at: datetime
+    read_at: Optional[datetime] = None
+
+
+class AlertListResponse(CamelModel):
+    alerts: List[AlertResponse] = Field(default_factory=list)
+    count: int = 0

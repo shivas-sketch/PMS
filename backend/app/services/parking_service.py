@@ -28,12 +28,14 @@ from app.schemas.parking import (
     UpdateSlotRequest,
     VehicleListResponse,
 )
+from app.services.alert_service import AlertService
 from app.utils.vehicle_number import clean_vehicle_number
 
 
 class ParkingService:
-    def __init__(self, repository: ParkingRepository):
+    def __init__(self, repository: ParkingRepository, alert_service: AlertService | None = None):
         self.repository = repository
+        self.alert_service = alert_service
 
     def get_capacity(self) -> CapacityResponse:
         config = self.repository.get_capacity()
@@ -52,11 +54,21 @@ class ParkingService:
             area_id=request.area_id,
             slot_id=request.slot_id,
         )
+        if self.alert_service:
+            try:
+                self.alert_service.check_capacity()
+            except Exception:
+                pass
         return ParkingSessionResponse.model_validate(session)
 
     def exit_vehicle(self, vehicle_number: str) -> ParkingSessionResponse:
         cleaned = clean_vehicle_number(vehicle_number)
         session = self.repository.exit_vehicle(cleaned)
+        if self.alert_service:
+            try:
+                self.alert_service.check_capacity()
+            except Exception:
+                pass
         return ParkingSessionResponse.model_validate(session)
 
     def reassign_slot(self, vehicle_number: str, slot_id: str) -> ParkingSessionResponse:

@@ -8,14 +8,17 @@ an image. Capacity only changes here, via Firestore transactions in
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.dependencies import get_parking_service, get_timeline_service
+from app.dependencies import get_alert_service, get_parking_service, get_timeline_service
 from app.enums import ParkingTimelineStage
 from app.schemas.parking import (
     AddVehicleRequest,
+    AlertListResponse,
+    AlertResponse,
     BulkCreateSlotsRequest,
     BulkCreateSlotsResponse,
     CapacityResponse,
@@ -35,6 +38,7 @@ from app.schemas.parking import (
     UpdateSlotRequest,
     VehicleListResponse,
 )
+from app.services.alert_service import AlertService
 from app.services.parking_service import ParkingService
 from app.services.timeline_service import TimelineService
 
@@ -311,3 +315,41 @@ def delivered(
     event = timeline_service.deliver(session_id, notes=payload.notes)
     logger.info("parking_delivered session_id=%s", session_id)
     return event
+
+
+# --- capacity alerts ----------------------------------------------------
+
+@router.get("/alerts", response_model=AlertListResponse)
+def list_alerts(
+    unread_only: bool = Query(False, alias="unreadOnly"),
+    limit: int = Query(50, ge=1, le=200),
+    alert_service: AlertService = Depends(get_alert_service),
+) -> AlertListResponse:
+    alerts = alert_service.list_alerts(limit=limit)
+    if unread_only:
+        alerts = [a for a in alerts if not a.get("read", False)]
+    items = [AlertResponse.model_validate(a) for a in alerts]
+    return AlertListResponse(alerts=items, count=len(items))
+
+
+@router.post("/alerts/{alert_id}/read", response_model=AlertResponse)
+def mark_alert_read(
+    alert_id: str,
+    alert_service: AlertService = Depends(get_alert_service),
+) -> AlertResponse:
+    alert_service.mark_alert_read(alert_id)
+    alerts = alert_service.list_alerts(limit=200)
+    for a in alerts:
+        if a.get("alertId") == alert_id:
+            return AlertResponse.model_validate(a)
+    return AlertResponse(
+        alert_id=alert_id,
+        threshold=0,
+        occupied_slots=0,
+        total_capacity=0,
+        occupancy_percent=0,
+        severity="LOW",
+        message="",
+        read=True,
+        created_at=datetime.now(timezone.utc),
+    )

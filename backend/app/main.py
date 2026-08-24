@@ -25,6 +25,7 @@ from app.services.ocr_service import OCRService
 from app.services.parking_service import ParkingService
 from app.services.plate_detection_service import NumberPlateDetectionService
 from app.services.recognition_service import RecognitionService
+from app.services.alert_service import AlertService
 from app.services.timeline_service import TimelineService
 from app.services.vehicle_classification_service import VehicleClassificationService
 from app.services.vehicle_detection_service import VehicleDetectionService
@@ -97,8 +98,10 @@ async def lifespan(app: FastAPI):
         repository = ParkingRepository(db)
         repository.ensure_config(total_capacity=settings.DEFAULT_TOTAL_CAPACITY)
         timeline_repository = TimelineRepository(db)
+        alert_service = AlertService(repository)
         app.state.parking_repository = repository
-        app.state.parking_service = ParkingService(repository)
+        app.state.parking_service = ParkingService(repository, alert_service=alert_service)
+        app.state.alert_service = alert_service
         app.state.timeline_repository = timeline_repository
         app.state.timeline_service = TimelineService(repository, timeline_repository)
         logger.info("Firestore connected and parking_config/main ensured.")
@@ -106,6 +109,7 @@ async def lifespan(app: FastAPI):
         logger.error("Firestore initialization failed: %s. Parking endpoints will error until fixed.", exc)
         app.state.parking_repository = None
         app.state.parking_service = None
+        app.state.alert_service = None
         app.state.timeline_repository = None
         app.state.timeline_service = None
 

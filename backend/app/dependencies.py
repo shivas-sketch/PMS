@@ -11,6 +11,7 @@ from fastapi import Request
 from app.config.settings import Settings
 from app.repositories.parking_repository import ParkingRepository
 from app.repositories.timeline_repository import TimelineRepository
+from app.services.alert_service import AlertService
 from app.services.parking_service import ParkingService
 from app.services.recognition_service import RecognitionService
 from app.services.timeline_service import TimelineService
@@ -38,3 +39,7 @@ def get_timeline_repository(request: Request) -> TimelineRepository:
 
 def get_timeline_service(request: Request) -> TimelineService:
     return request.app.state.timeline_service
+
+
+def get_alert_service(request: Request) -> AlertService:
+    return request.app.state.alert_service
