@@ -322,7 +322,9 @@ export function ParkingLayoutPage() {
                       key={slot.slotId}
                       title={
                         slot.isCorridorSlot
-                          ? 'Corridor parking (unnumbered)'
+                          ? slot.status === 'OCCUPIED'
+                            ? `Corridor slot occupied by ${slot.vehicleNumber}`
+                            : 'Corridor parking (unnumbered)'
                           : slot.status === 'OCCUPIED'
                             ? `Occupied by ${slot.vehicleNumber}`
                             : slot.status === 'AVAILABLE'
@@ -361,7 +363,9 @@ export function ParkingLayoutPage() {
                           size="small"
                           label={
                             slot.isCorridorSlot
-                              ? 'Corridor'
+                              ? slot.status === 'OCCUPIED'
+                                ? slot.vehicleNumber
+                                : 'Corridor'
                               : slot.status === 'AVAILABLE'
                                 ? 'Free'
                                 : slot.status === 'OCCUPIED'
