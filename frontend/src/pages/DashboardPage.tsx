@@ -449,6 +449,7 @@ function AvailableSlotsTable({
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [areaFilter, setAreaFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'slot' | 'corridor'>('all');
 
   const areaById = new Map(areas.map((a) => [a.areaId, a]));
 
@@ -472,6 +473,7 @@ function AvailableSlotsTable({
           rowId: slot.slotId,
           slotId: slot.slotId,
           slotNumber: slot.slotNumber,
+          isCorridorSlot: slot.isCorridorSlot,
           areaName: slot.areaName,
           status: slot.status as SlotStatus,
           vehicleNumber: slot.vehicleNumber || session.vehicleNumber,
@@ -498,6 +500,7 @@ function AvailableSlotsTable({
       rowId: s.slotId,
       slotId: s.slotId,
       slotNumber: s.slotNumber,
+      isCorridorSlot: s.isCorridorSlot,
       areaName: s.areaName,
       status: s.status,
       vehicleNumber: s.vehicleNumber,
@@ -506,7 +509,11 @@ function AvailableSlotsTable({
     }));
 
   const availableSlots = [...availableRows, ...transitRows].filter(
-    (s) => areaFilter === 'all' || s.areaName === areaFilter,
+    (s) =>
+      (areaFilter === 'all' || s.areaName === areaFilter) &&
+      (typeFilter === 'all' ||
+        (typeFilter === 'corridor' && !!s.isCorridorSlot) ||
+        (typeFilter === 'slot' && !s.isCorridorSlot)),
   );
 
   const paged = availableSlots.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
@@ -540,6 +547,22 @@ function AvailableSlotsTable({
               ))}
             </Select>
           </FormControl>
+          <FormControl size="small" sx={{ minWidth: 110 }}>
+            <InputLabel id="available-type-filter-label">Type</InputLabel>
+            <Select
+              labelId="available-type-filter-label"
+              value={typeFilter}
+              label="Type"
+              onChange={(e) => {
+                setTypeFilter(e.target.value as 'all' | 'slot' | 'corridor');
+                setPage(0);
+              }}
+            >
+              <MenuItem value="all">All</MenuItem>
+              <MenuItem value="slot">Slots</MenuItem>
+              <MenuItem value="corridor">Corridor</MenuItem>
+            </Select>
+          </FormControl>
           <IconButton onClick={onClose} aria-label="Close detail table">
             <CloseOutlinedIcon />
           </IconButton>
@@ -556,6 +579,7 @@ function AvailableSlotsTable({
             <TableHead>
               <TableRow>
                 <TableCell>Area</TableCell>
+                <TableCell>Slot Type</TableCell>
                 <TableCell>Slot Number</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Vehicle</TableCell>
@@ -567,7 +591,20 @@ function AvailableSlotsTable({
                 <TableRow key={s.rowId} hover>
                   <TableCell>{s.areaName}</TableCell>
                   <TableCell>
-                    <Typography fontWeight={700}>{s.slotNumber}</Typography>
+                    <Chip
+                      size="small"
+                      label={s.isCorridorSlot ? 'Corridor' : 'Slot'}
+                      color={s.isCorridorSlot ? 'secondary' : 'default'}
+                      variant="outlined"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Typography
+                      fontWeight={700}
+                      color={s.isCorridorSlot ? 'secondary.main' : 'text.primary'}
+                    >
+                      {s.isCorridorSlot ? `C-${s.slotNumber}` : s.slotNumber}
+                    </Typography>
                   </TableCell>
                   <TableCell>
                     {s.inTransit ? (
@@ -618,6 +655,7 @@ function OccupiedSlotsTable({
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [areaFilter, setAreaFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'slot' | 'corridor'>('all');
 
   const sessionById = new Map(activeSessions.map((s) => [s.sessionId, s]));
 
@@ -629,13 +667,21 @@ function OccupiedSlotsTable({
   );
 
   const occupiedSlots = allSlots
-    .filter((s) => s.status === 'OCCUPIED' && (areaFilter === 'all' || s.areaName === areaFilter))
+    .filter(
+      (s) =>
+        s.status === 'OCCUPIED' &&
+        (areaFilter === 'all' || s.areaName === areaFilter) &&
+        (typeFilter === 'all' ||
+          (typeFilter === 'corridor' && !!s.isCorridorSlot) ||
+          (typeFilter === 'slot' && !s.isCorridorSlot)),
+    )
     .map((s) => {
       const session = s.sessionId ? sessionById.get(s.sessionId) : undefined;
       return {
         rowId: s.slotId,
         slotId: s.slotId,
         slotNumber: s.slotNumber,
+        isCorridorSlot: s.isCorridorSlot,
         areaName: s.areaName,
         vehicleNumber: s.vehicleNumber,
         session,
@@ -673,6 +719,22 @@ function OccupiedSlotsTable({
               ))}
             </Select>
           </FormControl>
+          <FormControl size="small" sx={{ minWidth: 110 }}>
+            <InputLabel id="occupied-type-filter-label">Type</InputLabel>
+            <Select
+              labelId="occupied-type-filter-label"
+              value={typeFilter}
+              label="Type"
+              onChange={(e) => {
+                setTypeFilter(e.target.value as 'all' | 'slot' | 'corridor');
+                setPage(0);
+              }}
+            >
+              <MenuItem value="all">All</MenuItem>
+              <MenuItem value="slot">Slots</MenuItem>
+              <MenuItem value="corridor">Corridor</MenuItem>
+            </Select>
+          </FormControl>
           <IconButton onClick={onClose} aria-label="Close detail table">
             <CloseOutlinedIcon />
           </IconButton>
@@ -689,6 +751,7 @@ function OccupiedSlotsTable({
             <TableHead>
               <TableRow>
                 <TableCell>Area</TableCell>
+                <TableCell>Slot Type</TableCell>
                 <TableCell>Slot Number</TableCell>
                 <TableCell>Vehicle</TableCell>
                 <TableCell>Stage</TableCell>
@@ -700,7 +763,20 @@ function OccupiedSlotsTable({
                 <TableRow key={s.rowId} hover>
                   <TableCell>{s.areaName}</TableCell>
                   <TableCell>
-                    <Typography fontWeight={700}>{s.slotNumber}</Typography>
+                    <Chip
+                      size="small"
+                      label={s.isCorridorSlot ? 'Corridor' : 'Slot'}
+                      color={s.isCorridorSlot ? 'secondary' : 'default'}
+                      variant="outlined"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Typography
+                      fontWeight={700}
+                      color={s.isCorridorSlot ? 'secondary.main' : 'text.primary'}
+                    >
+                      {s.isCorridorSlot ? `C-${s.slotNumber}` : s.slotNumber}
+                    </Typography>
                   </TableCell>
                   <TableCell>{s.vehicleNumber || '—'}</TableCell>
                   <TableCell>
