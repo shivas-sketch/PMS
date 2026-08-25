@@ -299,7 +299,35 @@ class FakeParkingRepository:
 
     def list_slots(self, area_id: str) -> list:
         with self._lock:
-            return [dict(s) for s in self._slots.values() if s["areaId"] == area_id]
+            slots = [dict(s) for s in self._slots.values() if s["areaId"] == area_id]
+            area = self._areas.get(area_id)
+            if area and area.get("corridorCapacity", 0) > 0:
+                corridor_sessions = sorted(
+                    [
+                        dict(s)
+                        for s in self._sessions.values()
+                        if s.get("areaId") == area_id
+                        and s.get("status") == "ACTIVE"
+                        and s.get("isCorridorParking") is True
+                    ],
+                    key=lambda s: s.get("entryTime") or _utcnow().isoformat(),
+                )
+                vehicles = [(s.get("sessionId"), s.get("vehicleNumber")) for s in corridor_sessions]
+                now = _utcnow()
+                for i in range(1, area["corridorCapacity"] + 1):
+                    session_id, vehicle_number = vehicles[i - 1] if i <= len(vehicles) else (None, None)
+                    slots.append({
+                        "slotId": f"{area_id}:corridor:{i}",
+                        "areaId": area_id,
+                        "slotNumber": f"corridor-{i}",
+                        "status": "OCCUPIED" if i <= area.get("corridorOccupied", 0) else "AVAILABLE",
+                        "vehicleNumber": vehicle_number,
+                        "sessionId": session_id,
+                        "createdAt": area.get("createdAt") or now,
+                        "updatedAt": area.get("updatedAt") or now,
+                        "isCorridorSlot": True,
+                    })
+            return slots
 
     def delete_slot(self, slot_id: str) -> None:
         with self._lock:

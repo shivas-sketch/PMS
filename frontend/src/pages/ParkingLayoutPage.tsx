@@ -290,11 +290,13 @@ export function ParkingLayoutPage() {
                     <Tooltip
                       key={slot.slotId}
                       title={
-                        slot.status === 'OCCUPIED'
-                          ? `Occupied by ${slot.vehicleNumber}`
-                          : slot.status === 'AVAILABLE'
-                            ? 'Available'
-                            : slot.status
+                        slot.isCorridorSlot
+                          ? 'Corridor parking (unnumbered)'
+                          : slot.status === 'OCCUPIED'
+                            ? `Occupied by ${slot.vehicleNumber}`
+                            : slot.status === 'AVAILABLE'
+                              ? 'Available'
+                              : slot.status
                       }
                     >
                       <Paper
@@ -307,23 +309,34 @@ export function ParkingLayoutPage() {
                           alignItems: 'center',
                           justifyContent: 'center',
                           borderColor:
+                            slot.isCorridorSlot ? 'secondary.main' :
                             slot.status === 'AVAILABLE' ? 'success.main' :
                             slot.status === 'OCCUPIED' ? 'error.main' : 'divider',
                           bgcolor:
+                            slot.isCorridorSlot ? 'secondary.lighter' :
                             slot.status === 'AVAILABLE' ? 'success.lighter' :
                             slot.status === 'OCCUPIED' ? 'error.lighter' : 'action.hover',
                           position: 'relative',
                         }}
                       >
-                        <Typography fontWeight={700} fontSize={14}>
+                        <Typography fontWeight={700} fontSize={slot.isCorridorSlot ? 12 : 14}>
                           {slot.slotNumber}
                         </Typography>
                         <Chip
                           size="small"
-                          label={slot.status === 'AVAILABLE' ? 'Free' : slot.status === 'OCCUPIED' ? slot.vehicleNumber : slot.status}
+                          label={
+                            slot.isCorridorSlot
+                              ? 'Corridor'
+                              : slot.status === 'AVAILABLE'
+                                ? 'Free'
+                                : slot.status === 'OCCUPIED'
+                                  ? slot.vehicleNumber
+                                  : slot.status
+                          }
+                          color={slot.isCorridorSlot ? 'secondary' : undefined}
                           sx={{ mt: 0.5, fontSize: 10, maxWidth: 72 }}
                         />
-                        {slot.status === 'AVAILABLE' && (
+                        {!slot.isCorridorSlot && slot.status === 'AVAILABLE' && (
                           <IconButton
                             size="small"
                             sx={{ position: 'absolute', top: -8, right: -8, bgcolor: 'background.paper' }}
@@ -337,13 +350,15 @@ export function ParkingLayoutPage() {
                             )}
                           </IconButton>
                         )}
-                        <IconButton
-                          size="small"
-                          sx={{ position: 'absolute', bottom: -8, right: -8, bgcolor: 'background.paper' }}
-                          onClick={() => setEditingSlot(slot)}
-                        >
-                          <EditOutlinedIcon sx={{ fontSize: 14 }} />
-                        </IconButton>
+                        {!slot.isCorridorSlot && (
+                          <IconButton
+                            size="small"
+                            sx={{ position: 'absolute', bottom: -8, right: -8, bgcolor: 'background.paper' }}
+                            onClick={() => setEditingSlot(slot)}
+                          >
+                            <EditOutlinedIcon sx={{ fontSize: 14 }} />
+                          </IconButton>
+                        )}
                       </Paper>
                     </Tooltip>
                   ))}

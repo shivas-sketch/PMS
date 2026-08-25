@@ -569,11 +569,13 @@ function EntryDialog({
               helperText="Select a specific available slot"
             >
               <MenuItem value="">— Any available —</MenuItem>
-              {slots.map((slot) => (
-                <MenuItem key={slot.slotId} value={slot.slotId}>
-                  {slot.slotNumber}
-                </MenuItem>
-              ))}
+              {slots
+                .filter((slot) => !slot.slotNumber.toLowerCase().startsWith('corridor-'))
+                .map((slot) => (
+                  <MenuItem key={slot.slotId} value={slot.slotId}>
+                    {slot.slotNumber}
+                  </MenuItem>
+                ))}
             </TextField>
           )}
         </Stack>

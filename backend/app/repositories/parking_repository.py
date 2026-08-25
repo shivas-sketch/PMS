@@ -391,9 +391,51 @@ class ParkingRepository:
         return payload
 
     def list_slots(self, area_id: str) -> List[dict]:
+        area_snapshot = self._area_ref(area_id).get()
+        area = area_snapshot.to_dict() if area_snapshot.exists else None
+
         docs = list(self._slots_ref().where("areaId", "==", area_id).stream())
         slots = [doc.to_dict() for doc in docs]
         slots.sort(key=lambda s: s.get("slotNumber", ""))
+
+        if area and int(area.get("corridorCapacity", 0)) > 0:
+            now = _utcnow()
+            area_created_at = area.get("createdAt") or now
+            area_updated_at = area.get("updatedAt") or now
+
+            # Map active corridor-parked sessions in this area to numbered
+            # references (corridor-1, corridor-2, ...). The exact N is not a
+            # physical slot, just a reference so the layout table can display
+            # corridor occupancy. We query by areaId only and filter the rest
+            # in Python to avoid needing a new composite Firestore index.
+            corridor_sessions = sorted(
+                [
+                    s.to_dict()
+                    for s in self._sessions_ref.where("areaId", "==", area_id).stream()
+                    if (s.to_dict() or {}).get("status") == "ACTIVE"
+                    and (s.to_dict() or {}).get("isCorridorParking") is True
+                ],
+                key=lambda s: s.get("entryTime") or _utcnow().isoformat(),
+            )
+            corridor_vehicles = [
+                (s.get("sessionId"), s.get("vehicleNumber")) for s in corridor_sessions
+            ]
+            corridor_capacity = int(area.get("corridorCapacity", 0))
+
+            for i in range(1, corridor_capacity + 1):
+                session_id, vehicle_number = corridor_vehicles[i - 1] if i <= len(corridor_vehicles) else (None, None)
+                slots.append({
+                    "slotId": f"{area_id}:corridor:{i}",
+                    "areaId": area_id,
+                    "slotNumber": f"corridor-{i}",
+                    "status": "OCCUPIED" if i <= area.get("corridorOccupied", 0) else "AVAILABLE",
+                    "vehicleNumber": vehicle_number,
+                    "sessionId": session_id,
+                    "createdAt": area_created_at,
+                    "updatedAt": area_updated_at,
+                    "isCorridorSlot": True,
+                })
+
         return slots
 
     def delete_slot(self, slot_id: str) -> None:

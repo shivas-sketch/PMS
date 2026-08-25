@@ -152,6 +152,7 @@ export type ParkingSlot = {
   status: SlotStatus;
   vehicleNumber?: string | null;
   sessionId?: string | null;
+  isCorridorSlot?: boolean;
   createdAt: string;
   updatedAt: string;
 };
