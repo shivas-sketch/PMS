@@ -355,7 +355,7 @@ export function ParkingLayoutPage() {
                           fontSize={slot.isCorridorSlot ? 12 : 14}
                           color={slot.isCorridorSlot ? 'secondary.main' : 'text.primary'}
                         >
-                          {slot.slotNumber}
+                          {slot.isCorridorSlot ? `C-${slot.slotNumber}` : slot.slotNumber}
                         </Typography>
                         <Chip
                           size="small"
