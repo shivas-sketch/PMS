@@ -54,7 +54,11 @@ class TimelineService:
         metadata: Optional[Dict[str, Any]] = None,
     ) -> ParkingTimelineEventResponse:
         session = self._get_session_or_404(session_id)
-        if stage == ParkingTimelineStage.PARKED and not session.get("slotId"):
+        if (
+            stage == ParkingTimelineStage.PARKED
+            and not session.get("slotId")
+            and not session.get("isCorridorParking")
+        ):
             raise ParkingSlotRequiredError()
         event = self.timeline_repository.create_timeline_event(
             session_id=session_id,
@@ -124,7 +128,7 @@ class TimelineService:
         # slot the vehicle is being picked up from), then release the slot.
         session = self._get_session_or_404(session_id)
         event = self.add_event(session_id, ParkingTimelineStage.PICKED_UP, notes=notes)
-        if session.get("slotId"):
+        if session.get("slotId") or session.get("isCorridorParking"):
             self.parking_repository.release_slot_for_pickup(session_id)
         return event
 
