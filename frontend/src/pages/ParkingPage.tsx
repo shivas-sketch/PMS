@@ -571,6 +571,7 @@ function EntryDialog({
               <MenuItem value="">— Any available —</MenuItem>
               {slots
                 .filter((slot) => !slot.isCorridorSlot)
+                .sort((a, b) => a.slotNumber.localeCompare(b.slotNumber, undefined, { numeric: true }))
                 .map((slot) => (
                   <MenuItem key={slot.slotId} value={slot.slotId}>
                     {slot.slotNumber}
@@ -778,11 +779,14 @@ function ReassignSlotDialog({
             helperText={slots.length === 0 ? 'No available slots in this area' : 'Select a new slot'}
             disabled={slots.length === 0}
           >
-            {slots.map((slot) => (
-              <MenuItem key={slot.slotId} value={slot.slotId}>
-                {slot.slotNumber}
-              </MenuItem>
-            ))}
+            {slots
+              .filter((slot) => !slot.isCorridorSlot)
+              .sort((a, b) => a.slotNumber.localeCompare(b.slotNumber, undefined, { numeric: true }))
+              .map((slot) => (
+                <MenuItem key={slot.slotId} value={slot.slotId}>
+                  {slot.slotNumber}
+                </MenuItem>
+              ))}
           </TextField>
         </Stack>
       </DialogContent>
