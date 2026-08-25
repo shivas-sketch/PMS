@@ -79,6 +79,7 @@ export type ParkingSession = {
   areaName?: string | null;
   slotId?: string | null;
   slotNumber?: string | null;
+  isCorridorParking?: boolean;
   currentStage?: ParkingTimelineStage | null;
 };
 
@@ -109,6 +110,7 @@ export type AddVehicleRequest = {
   hospitalSide?: string | null;
   areaId?: string | null;
   slotId?: string | null;
+  useCorridor?: boolean;
 };
 
 export type UpdateSessionRequest = {
@@ -129,6 +131,9 @@ export type ParkingArea = {
   totalSlots: number;
   availableSlots: number;
   occupiedSlots: number;
+  corridorCapacity: number;
+  corridorAvailable: number;
+  corridorOccupied: number;
   createdAt: string;
   updatedAt: string;
 };

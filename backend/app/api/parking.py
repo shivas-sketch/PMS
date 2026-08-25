@@ -34,6 +34,7 @@ from app.schemas.parking import (
     ParkingTimelineListResponse,
     ReassignSlotRequest,
     TimelineActionRequest,
+    UpdateAreaCorridorRequest,
     UpdateSessionRequest,
     UpdateSlotRequest,
     VehicleListResponse,
@@ -64,7 +65,7 @@ def add_vehicle(
     # immediately the vehicle is already physically parked, so record that
     # too (see spec 15.4 - "if a slot is immediately allocated...").
     timeline_service.add_event(session.session_id, ParkingTimelineStage.ASSIGNED_FOR_PARKING)
-    if session.slot_id:
+    if session.slot_id or session.is_corridor_parking:
         timeline_service.add_event(session.session_id, ParkingTimelineStage.PARKED)
         session = parking_service.get_vehicle(session.vehicle_number)
     return session
@@ -151,6 +152,20 @@ def delete_area(
     parking_service: ParkingService = Depends(get_parking_service),
 ):
     parking_service.delete_area(area_id)
+
+
+@router.patch("/areas/{area_id}/corridor", response_model=ParkingAreaResponse)
+def update_area_corridor(
+    area_id: str,
+    payload: UpdateAreaCorridorRequest,
+    parking_service: ParkingService = Depends(get_parking_service),
+) -> ParkingAreaResponse:
+    area = parking_service.update_area_corridor(area_id, payload)
+    logger.info(
+        "parking_area_corridor_update area_id=%s corridor_capacity=%s",
+        area_id, payload.corridor_capacity,
+    )
+    return area
 
 
 # --- parking slot endpoints ---------------------------------------------

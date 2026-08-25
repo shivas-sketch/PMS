@@ -22,6 +22,7 @@ class AddVehicleRequest(CamelModel):
     hospital_side: Optional[str] = Field(None, max_length=40)
     area_id: Optional[str] = None
     slot_id: Optional[str] = None
+    use_corridor: bool = False
 
     @field_validator("vehicle_number")
     @classmethod
@@ -61,6 +62,7 @@ class ParkingSessionResponse(CamelModel):
     area_name: Optional[str] = None
     slot_id: Optional[str] = None
     slot_number: Optional[str] = None
+    is_corridor_parking: bool = False
     current_stage: Optional[ParkingTimelineStage] = None
 
 
@@ -92,6 +94,7 @@ class CreateAreaRequest(CamelModel):
     name: str = Field(..., min_length=1, max_length=60)
     area_type: AreaType = "OTHER"
     description: Optional[str] = Field(None, max_length=200)
+    corridor_capacity: int = Field(0, ge=0, le=500, description="Unnumbered overflow parking slots in this area (e.g. corridor space)")
 
 
 class ParkingAreaResponse(CamelModel):
@@ -102,8 +105,15 @@ class ParkingAreaResponse(CamelModel):
     total_slots: int = 0
     available_slots: int = 0
     occupied_slots: int = 0
+    corridor_capacity: int = 0
+    corridor_available: int = 0
+    corridor_occupied: int = 0
     created_at: datetime
     updated_at: datetime
+
+
+class UpdateAreaCorridorRequest(CamelModel):
+    corridor_capacity: int = Field(..., ge=0, le=500)
 
 
 class ParkingAreaListResponse(CamelModel):

@@ -24,6 +24,7 @@ from app.schemas.parking import (
     ParkingSlotListResponse,
     ParkingSlotResponse,
     ReassignSlotRequest,
+    UpdateAreaCorridorRequest,
     UpdateSessionRequest,
     UpdateSlotRequest,
     VehicleListResponse,
@@ -53,6 +54,7 @@ class ParkingService:
             hospital_side=request.hospital_side,
             area_id=request.area_id,
             slot_id=request.slot_id,
+            use_corridor=request.use_corridor,
         )
         if self.alert_service:
             try:
@@ -95,7 +97,12 @@ class ParkingService:
             name=request.name,
             area_type=request.area_type,
             description=request.description,
+            corridor_capacity=request.corridor_capacity,
         )
+        return ParkingAreaResponse.model_validate(area)
+
+    def update_area_corridor(self, area_id: str, request: UpdateAreaCorridorRequest) -> ParkingAreaResponse:
+        area = self.repository.update_area_corridor_capacity(area_id, request.corridor_capacity)
         return ParkingAreaResponse.model_validate(area)
 
     def list_areas(self) -> ParkingAreaListResponse:

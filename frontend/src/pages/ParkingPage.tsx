@@ -10,6 +10,7 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  FormControlLabel,
   Grid2 as Grid,
   IconButton,
   LinearProgress,
@@ -17,6 +18,7 @@ import {
   Paper,
   Select,
   Stack,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -197,7 +199,13 @@ export function ParkingPage() {
                       <TableCell>{session.wheelCategory}</TableCell>
                       <TableCell>{session.hospitalSide || '—'}</TableCell>
                       <TableCell>{session.areaName || '—'}</TableCell>
-                      <TableCell>{session.slotNumber || '—'}</TableCell>
+                      <TableCell>
+                        {session.isCorridorParking ? (
+                          <Chip size="small" color="secondary" variant="outlined" label="Corridor" />
+                        ) : (
+                          session.slotNumber || '—'
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Chip
                           size="small"
@@ -429,6 +437,7 @@ function EntryDialog({
   const [selectedAreaId, setSelectedAreaId] = useState('');
   const [slots, setSlots] = useState<ParkingSlot[]>([]);
   const [selectedSlotId, setSelectedSlotId] = useState('');
+  const [useCorridor, setUseCorridor] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -438,6 +447,7 @@ function EntryDialog({
 
   useEffect(() => {
     setSelectedSlotId('');
+    setUseCorridor(false);
     if (selectedAreaId) {
       void get<ParkingSlotList>(`/parking/areas/${selectedAreaId}/slots`)
         .then((data) => setSlots(data.slots.filter((s) => s.status === 'AVAILABLE')))
@@ -446,6 +456,8 @@ function EntryDialog({
       setSlots([]);
     }
   }, [selectedAreaId]);
+
+  const selectedArea = areas.find((a) => a.areaId === selectedAreaId);
 
   const submit = async () => {
     setSaving(true);
@@ -457,7 +469,8 @@ function EntryDialog({
         vehicleType,
         hospitalSide: hospitalSide || undefined,
         areaId: selectedAreaId || undefined,
-        slotId: selectedSlotId || undefined,
+        slotId: useCorridor ? undefined : selectedSlotId || undefined,
+        useCorridor: useCorridor || undefined,
       });
       setVehicleNumber('');
       setWheelCategory('4');
@@ -465,6 +478,7 @@ function EntryDialog({
       setHospitalSide('');
       setSelectedAreaId('');
       setSelectedSlotId('');
+      setUseCorridor(false);
       onCreated();
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Unable to add vehicle.');
@@ -534,7 +548,19 @@ function EntryDialog({
               </MenuItem>
             ))}
           </TextField>
-          {selectedAreaId && (
+          {selectedAreaId && !!selectedArea?.corridorCapacity && (
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={useCorridor}
+                  onChange={(e) => setUseCorridor(e.target.checked)}
+                  disabled={selectedArea.corridorAvailable <= 0}
+                />
+              }
+              label={`Park in corridor (${selectedArea.corridorAvailable}/${selectedArea.corridorCapacity} free, unnumbered)`}
+            />
+          )}
+          {selectedAreaId && !useCorridor && (
             <TextField
               select
               label="Slot"

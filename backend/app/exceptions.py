@@ -128,3 +128,19 @@ class ParkingSlotRequiredError(AppError):
 
     def __init__(self, message: str = "A parking slot is required before marking the vehicle as parked"):
         super().__init__(message)
+
+
+class CorridorFullError(AppError):
+    status_code = 409
+    error_code = "CORRIDOR_FULL"
+
+    def __init__(self, message: str = "Corridor parking is full in this area"):
+        super().__init__(message)
+
+
+class InvalidCorridorCapacityError(AppError):
+    status_code = 422
+    error_code = "INVALID_CORRIDOR_CAPACITY"
+
+    def __init__(self, message: str = "Corridor capacity cannot be less than the number of currently occupied corridor slots"):
+        super().__init__(message)

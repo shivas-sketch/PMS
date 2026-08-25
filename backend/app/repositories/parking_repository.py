@@ -27,7 +27,9 @@ from google.cloud import firestore
 from app.enums import ParkingTimelineStage
 from app.exceptions import (
     AreaHasActiveSlotsError,
+    CorridorFullError,
     DuplicateSlotError,
+    InvalidCorridorCapacityError,
     ParkingAreaNotFoundError,
     ParkingConfigMissingError,
     ParkingFullError,
@@ -121,7 +123,11 @@ class ParkingRepository:
         caused by manual edits, emulator resets, or bugs in incremental updates.
         """
         slots = list(self._slots_ref().stream())
-        total = len(slots)
+        numbered_total = len(slots)
+
+        areas = list(self._areas_ref().stream())
+        corridor_total = sum(int((a.to_dict() or {}).get("corridorCapacity", 0) or 0) for a in areas)
+        total = numbered_total + corridor_total
 
         active_sessions = list(self._sessions_ref.where("status", "==", "ACTIVE").stream())
         occupied = len(active_sessions)
@@ -222,11 +228,12 @@ class ParkingRepository:
         hospital_side: Optional[str] = None,
         area_id: Optional[str] = None,
         slot_id: Optional[str] = None,
+        use_corridor: bool = False,
     ) -> dict:
         cleaned = clean_vehicle_number(vehicle_number)
         transaction = self.db.transaction()
         return _add_vehicle_txn(
-            transaction, self, cleaned, wheel_category, vehicle_type, hospital_side, area_id, slot_id
+            transaction, self, cleaned, wheel_category, vehicle_type, hospital_side, area_id, slot_id, use_corridor
         )
 
     def exit_vehicle(self, vehicle_number: str) -> dict:
@@ -252,10 +259,17 @@ class ParkingRepository:
         return _release_slot_for_pickup_txn(transaction, self, session_id)
 
     # --- parking areas --------------------------------------------------
-    def create_area(self, name: str, area_type: str, description: Optional[str] = None) -> dict:
+    def create_area(
+        self,
+        name: str,
+        area_type: str,
+        description: Optional[str] = None,
+        corridor_capacity: int = 0,
+    ) -> dict:
         now = _utcnow()
         doc_ref = self._areas_ref().document()
         area_id = doc_ref.id
+        corridor_capacity = max(0, int(corridor_capacity or 0))
         payload = {
             "areaId": area_id,
             "name": name,
@@ -264,10 +278,18 @@ class ParkingRepository:
             "totalSlots": 0,
             "availableSlots": 0,
             "occupiedSlots": 0,
+            "corridorCapacity": corridor_capacity,
+            "corridorAvailable": corridor_capacity,
+            "corridorOccupied": 0,
             "createdAt": now,
             "updatedAt": now,
         }
         doc_ref.set(payload)
+        if corridor_capacity > 0:
+            self._config_ref.update({
+                "totalCapacity": firestore.Increment(corridor_capacity),
+                "availableSlots": firestore.Increment(corridor_capacity),
+            })
         return payload
 
     def list_areas(self) -> List[dict]:
@@ -287,16 +309,47 @@ class ParkingRepository:
         area = area_snapshot.to_dict()
         if area.get("occupiedSlots", 0) > 0:
             raise AreaHasActiveSlotsError()
+        if area.get("corridorOccupied", 0) > 0:
+            raise AreaHasActiveSlotsError("Cannot delete area with occupied corridor parking")
         slot_docs = list(self._slots_ref().where("areaId", "==", area_id).stream())
         for doc in slot_docs:
             doc.reference.delete()
         self._area_ref(area_id).delete()
         total_slots = int(area.get("totalSlots", 0))
-        if total_slots > 0:
+        corridor_capacity = int(area.get("corridorCapacity", 0))
+        total_release = total_slots + corridor_capacity
+        if total_release > 0:
             self._config_ref.update({
-                "totalCapacity": firestore.Increment(-total_slots),
-                "availableSlots": firestore.Increment(-total_slots),
+                "totalCapacity": firestore.Increment(-total_release),
+                "availableSlots": firestore.Increment(-total_release),
             })
+
+    def update_area_corridor_capacity(self, area_id: str, corridor_capacity: int) -> dict:
+        area_ref = self._area_ref(area_id)
+        snapshot = area_ref.get()
+        if not snapshot.exists:
+            raise ParkingAreaNotFoundError()
+        area = snapshot.to_dict()
+        corridor_capacity = max(0, int(corridor_capacity))
+        current_capacity = int(area.get("corridorCapacity", 0))
+        current_occupied = int(area.get("corridorOccupied", 0))
+        if corridor_capacity < current_occupied:
+            raise InvalidCorridorCapacityError()
+        delta = corridor_capacity - current_capacity
+        now = _utcnow()
+        updates = {
+            "corridorCapacity": corridor_capacity,
+            "corridorAvailable": corridor_capacity - current_occupied,
+            "updatedAt": now,
+        }
+        area_ref.update(updates)
+        if delta != 0:
+            self._config_ref.update({
+                "totalCapacity": firestore.Increment(delta),
+                "availableSlots": firestore.Increment(delta),
+            })
+        area.update(updates)
+        return area
 
     # --- parking slots --------------------------------------------------
     def create_slot(self, area_id: str, slot_number: str) -> dict:
@@ -475,6 +528,7 @@ def _add_vehicle_txn(
     hospital_side: Optional[str] = None,
     area_id: Optional[str] = None,
     slot_id: Optional[str] = None,
+    use_corridor: bool = False,
 ) -> dict:
     config_ref = repo._config_ref
     vehicle_ref = repo._vehicle_ref(vehicle_number)
@@ -494,6 +548,10 @@ def _add_vehicle_txn(
     vehicle = vehicle_snapshot.to_dict() if vehicle_snapshot.exists else None
     if vehicle and vehicle.get("activeSessionId"):
         raise VehicleAlreadyActiveError()
+
+    # Corridor parking (unnumbered overflow capacity) is mutually exclusive
+    # with a specific numbered slot and requires an area to be specified.
+    use_corridor = bool(use_corridor) and not slot_id
 
     # --- slot validation (if area/slot specified) ---
     slot_snapshot = None
@@ -517,7 +575,17 @@ def _add_vehicle_txn(
         area_snapshot = area_ref.get(transaction=transaction)
         if not area_snapshot.exists:
             raise ParkingAreaNotFoundError()
-        area_name = area_snapshot.to_dict().get("name")
+        area_data = area_snapshot.to_dict()
+        area_name = area_data.get("name")
+
+        if use_corridor:
+            corridor_available = int(area_data.get("corridorAvailable", 0))
+            if corridor_available <= 0:
+                raise CorridorFullError()
+            slot_number = "Corridor"
+    elif use_corridor:
+        # Corridor parking requires a specific area; silently ignore otherwise.
+        use_corridor = False
 
     # --- writes -----------------------------------------------------------
     now = _utcnow()
@@ -538,6 +606,7 @@ def _add_vehicle_txn(
         "areaName": area_name,
         "slotId": slot_id,
         "slotNumber": slot_number,
+        "isCorridorParking": use_corridor,
         "currentStage": ParkingTimelineStage.ASSIGNED_FOR_PARKING.value,
         "updatedAt": now,
     }
@@ -566,7 +635,7 @@ def _add_vehicle_txn(
         },
     )
 
-    # Update slot and area counters if a slot was assigned
+    # Update slot and area counters if a numbered slot was assigned
     if slot_id and slot_snapshot:
         slot_ref = repo._slot_ref(slot_id)
         transaction.update(slot_ref, {
@@ -582,6 +651,13 @@ def _add_vehicle_txn(
                 "occupiedSlots": firestore.Increment(1),
                 "updatedAt": now,
             })
+    elif use_corridor and area_id and area_snapshot:
+        area_ref = repo._area_ref(area_id)
+        transaction.update(area_ref, {
+            "corridorAvailable": firestore.Increment(-1),
+            "corridorOccupied": firestore.Increment(1),
+            "updatedAt": now,
+        })
 
     return session_payload
 
@@ -627,10 +703,11 @@ def _exit_vehicle_txn(
         },
     )
 
-    # Release slot if one was assigned
+    # Release slot / corridor space if one was assigned
     session_data = session_snapshot.to_dict()
     slot_id = session_data.get("slotId")
     area_id = session_data.get("areaId")
+    is_corridor = bool(session_data.get("isCorridorParking"))
     if slot_id:
         slot_ref = repo._slot_ref(slot_id)
         transaction.update(slot_ref, {
@@ -646,6 +723,13 @@ def _exit_vehicle_txn(
                 "occupiedSlots": firestore.Increment(-1),
                 "updatedAt": now,
             })
+    elif is_corridor and area_id:
+        area_ref = repo._area_ref(area_id)
+        transaction.update(area_ref, {
+            "corridorAvailable": firestore.Increment(1),
+            "corridorOccupied": firestore.Increment(-1),
+            "updatedAt": now,
+        })
 
     updated_session = session_snapshot.to_dict()
     updated_session.update({"status": "EXITED", "exitTime": now})
@@ -680,6 +764,7 @@ def _reassign_slot_txn(
 
     old_slot_id = session_data.get("slotId")
     old_area_id = session_data.get("areaId")
+    old_is_corridor = bool(session_data.get("isCorridorParking"))
 
     # Read new slot
     new_slot_ref = repo._slot_ref(new_slot_id)
@@ -729,6 +814,14 @@ def _reassign_slot_txn(
             "updatedAt": now,
         })
 
+    # Free old corridor space (mutually exclusive with old_slot_id)
+    if old_is_corridor and old_area_id and old_area_ref and old_area_snapshot and old_area_snapshot.exists:
+        transaction.update(old_area_ref, {
+            "corridorAvailable": firestore.Increment(1),
+            "corridorOccupied": firestore.Increment(-1),
+            "updatedAt": now,
+        })
+
     # Occupy new slot
     transaction.update(new_slot_ref, {
         "status": "OCCUPIED",
@@ -743,6 +836,7 @@ def _reassign_slot_txn(
         "slotNumber": new_slot_number,
         "areaId": new_area_id,
         "areaName": new_area_name,
+        "isCorridorParking": False,
     })
 
     # Update area counters.
@@ -772,6 +866,7 @@ def _reassign_slot_txn(
         "slotNumber": new_slot_number,
         "areaId": new_area_id,
         "areaName": new_area_name,
+        "isCorridorParking": False,
     })
     return updated_session
 
@@ -797,40 +892,58 @@ def _release_slot_for_pickup_txn(
 
     slot_id = session_data.get("slotId")
     area_id = session_data.get("areaId")
+    is_corridor = bool(session_data.get("isCorridorParking"))
 
-    if not slot_id:
+    if not slot_id and not is_corridor:
         return session_data
-
-    slot_ref = repo._slot_ref(slot_id)
-    slot_snapshot = slot_ref.get(transaction=transaction)
-
-    area_ref = repo._area_ref(area_id) if area_id else None
-    area_snapshot = area_ref.get(transaction=transaction) if area_ref else None
 
     now = _utcnow()
 
-    if slot_snapshot.exists:
-        transaction.update(slot_ref, {
-            "status": "AVAILABLE",
-            "vehicleNumber": None,
-            "sessionId": None,
-            "updatedAt": now,
-        })
+    if slot_id:
+        slot_ref = repo._slot_ref(slot_id)
+        slot_snapshot = slot_ref.get(transaction=transaction)
 
-    if area_ref and area_snapshot and area_snapshot.exists:
-        transaction.update(area_ref, {
-            "availableSlots": firestore.Increment(1),
-            "occupiedSlots": firestore.Increment(-1),
-            "updatedAt": now,
-        })
+        area_ref = repo._area_ref(area_id) if area_id else None
+        area_snapshot = area_ref.get(transaction=transaction) if area_ref else None
+
+        if slot_snapshot.exists:
+            transaction.update(slot_ref, {
+                "status": "AVAILABLE",
+                "vehicleNumber": None,
+                "sessionId": None,
+                "updatedAt": now,
+            })
+
+        if area_ref and area_snapshot and area_snapshot.exists:
+            transaction.update(area_ref, {
+                "availableSlots": firestore.Increment(1),
+                "occupiedSlots": firestore.Increment(-1),
+                "updatedAt": now,
+            })
+    elif is_corridor and area_id:
+        area_ref = repo._area_ref(area_id)
+        area_snapshot = area_ref.get(transaction=transaction)
+        if area_snapshot.exists:
+            transaction.update(area_ref, {
+                "corridorAvailable": firestore.Increment(1),
+                "corridorOccupied": firestore.Increment(-1),
+                "updatedAt": now,
+            })
 
     transaction.update(session_ref, {
         "slotId": None,
         "slotNumber": None,
         "areaId": None,
         "areaName": None,
+        "isCorridorParking": False,
     })
 
     updated_session = session_data.copy()
-    updated_session.update({"slotId": None, "slotNumber": None, "areaId": None, "areaName": None})
+    updated_session.update({
+        "slotId": None,
+        "slotNumber": None,
+        "areaId": None,
+        "areaName": None,
+        "isCorridorParking": False,
+    })
     return updated_session

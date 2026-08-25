@@ -24,6 +24,7 @@ import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import LayersOutlinedIcon from '@mui/icons-material/LayersOutlined';
+import DirectionsWalkOutlinedIcon from '@mui/icons-material/DirectionsWalkOutlined';
 import { del, get, patch, post, ApiError } from '../api/client';
 import type { ParkingArea, ParkingAreaList, ParkingSlot, ParkingSlotList, AreaType, BulkCreateSlotsResponse, SlotStatus } from '../types';
 
@@ -49,6 +50,7 @@ export function ParkingLayoutPage() {
   const [slotDialogOpen, setSlotDialogOpen] = useState(false);
   const [bulkSlotDialogOpen, setBulkSlotDialogOpen] = useState(false);
   const [editingSlot, setEditingSlot] = useState<ParkingSlot | null>(null);
+  const [corridorDialogArea, setCorridorDialogArea] = useState<ParkingArea | null>(null);
   const [busy, setBusy] = useState<string>();
 
   const loadAreas = useCallback(async () => {
@@ -178,31 +180,56 @@ export function ParkingLayoutPage() {
                           color={AREA_TYPE_COLORS[area.areaType]}
                           variant="outlined"
                         />
+                        {area.corridorCapacity > 0 && (
+                          <Tooltip title="Corridor parking (unnumbered overflow slots)">
+                            <Chip
+                              size="small"
+                              icon={<DirectionsWalkOutlinedIcon />}
+                              label={`${area.corridorOccupied}/${area.corridorCapacity} corridor`}
+                              color="secondary"
+                              variant="outlined"
+                            />
+                          </Tooltip>
+                        )}
                       </Stack>
                       <Typography variant="body2" color="text.secondary">
                         {area.occupiedSlots}/{area.totalSlots} occupied
                         {area.description ? ` · ${area.description}` : ''}
                       </Typography>
                     </Box>
-                    <Tooltip title="Delete area">
-                      <span>
+                    <Stack direction="row" spacing={0}>
+                      <Tooltip title="Configure corridor parking">
                         <IconButton
                           size="small"
-                          color="error"
-                          disabled={busy === `area-${area.areaId}` || area.occupiedSlots > 0}
+                          color="secondary"
                           onClick={(e) => {
                             e.stopPropagation();
-                            void handleDeleteArea(area.areaId);
+                            setCorridorDialogArea(area);
                           }}
                         >
-                          {busy === `area-${area.areaId}` ? (
-                            <CircularProgress size={18} />
-                          ) : (
-                            <DeleteOutlineOutlinedIcon fontSize="small" />
-                          )}
+                          <DirectionsWalkOutlinedIcon fontSize="small" />
                         </IconButton>
-                      </span>
-                    </Tooltip>
+                      </Tooltip>
+                      <Tooltip title="Delete area">
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            disabled={busy === `area-${area.areaId}` || area.occupiedSlots > 0 || area.corridorOccupied > 0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleDeleteArea(area.areaId);
+                            }}
+                          >
+                            {busy === `area-${area.areaId}` ? (
+                              <CircularProgress size={18} />
+                            ) : (
+                              <DeleteOutlineOutlinedIcon fontSize="small" />
+                            )}
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    </Stack>
                   </Stack>
                 </Paper>
               ))}
@@ -219,6 +246,11 @@ export function ParkingLayoutPage() {
                   <Typography variant="body2" color="text.secondary">
                     {selectedArea.availableSlots} available · {selectedArea.occupiedSlots} occupied · {selectedArea.totalSlots} total
                   </Typography>
+                  {selectedArea.corridorCapacity > 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      Corridor: {selectedArea.corridorAvailable} available · {selectedArea.corridorOccupied} occupied · {selectedArea.corridorCapacity} total
+                    </Typography>
+                  )}
                 </Box>
                 <Stack direction="row" spacing={1}>
                   <Button
@@ -337,6 +369,20 @@ export function ParkingLayoutPage() {
         }}
       />
 
+      {corridorDialogArea && (
+        <EditCorridorDialog
+          area={corridorDialogArea}
+          onClose={() => setCorridorDialogArea(null)}
+          onUpdated={(updated) => {
+            setCorridorDialogArea(null);
+            if (selectedArea?.areaId === updated.areaId) {
+              setSelectedArea(updated);
+            }
+            void loadAreas();
+          }}
+        />
+      )}
+
       {selectedArea && (
         <CreateSlotDialog
           open={slotDialogOpen}
@@ -392,6 +438,7 @@ function CreateAreaDialog({
   const [name, setName] = useState('');
   const [areaType, setAreaType] = useState<AreaType>('BASEMENT');
   const [description, setDescription] = useState('');
+  const [corridorCapacity, setCorridorCapacity] = useState('0');
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
 
@@ -399,10 +446,16 @@ function CreateAreaDialog({
     setSaving(true);
     setError(undefined);
     try {
-      await post('/parking/areas', { name, areaType, description: description || undefined });
+      await post('/parking/areas', {
+        name,
+        areaType,
+        description: description || undefined,
+        corridorCapacity: parseInt(corridorCapacity, 10) || 0,
+      });
       setName('');
       setAreaType('BASEMENT');
       setDescription('');
+      setCorridorCapacity('0');
       onCreated();
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Unable to create area.');
@@ -444,12 +497,85 @@ function CreateAreaDialog({
             onChange={(e) => setDescription(e.target.value)}
             helperText="e.g. Near emergency entrance"
           />
+          <TextField
+            label="Corridor Parking Slots (optional)"
+            type="number"
+            value={corridorCapacity}
+            onChange={(e) => setCorridorCapacity(e.target.value)}
+            helperText="Unnumbered overflow slots, e.g. corridor space (0 = none)"
+          />
         </Stack>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
         <Button variant="contained" onClick={() => void submit()} disabled={!name || saving}>
           {saving ? 'Creating…' : 'Create Area'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function EditCorridorDialog({
+  area,
+  onClose,
+  onUpdated,
+}: {
+  area: ParkingArea;
+  onClose: () => void;
+  onUpdated: (updated: ParkingArea) => void;
+}) {
+  const [corridorCapacity, setCorridorCapacity] = useState(String(area.corridorCapacity));
+  const [error, setError] = useState<string>();
+  const [saving, setSaving] = useState(false);
+
+  const capacityNum = parseInt(corridorCapacity, 10);
+  const isInvalid = Number.isNaN(capacityNum) || capacityNum < area.corridorOccupied;
+
+  const submit = async () => {
+    if (isInvalid) return;
+    setSaving(true);
+    setError(undefined);
+    try {
+      const updated = await patch<ParkingArea>(`/parking/areas/${area.areaId}/corridor`, {
+        corridorCapacity: capacityNum,
+      });
+      onUpdated(updated);
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : 'Unable to update corridor capacity.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onClose={onClose} fullWidth maxWidth="xs">
+      <DialogTitle>Corridor Parking — {area.name}</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ pt: 1 }}>
+          {error && <Alert severity="error">{error}</Alert>}
+          <Alert severity="info" sx={{ py: 0.5 }}>
+            {area.corridorOccupied} corridor slot(s) currently occupied
+          </Alert>
+          <TextField
+            autoFocus
+            label="Corridor Parking Slots"
+            type="number"
+            value={corridorCapacity}
+            onChange={(e) => setCorridorCapacity(e.target.value)}
+            error={isInvalid}
+            helperText={
+              isInvalid
+                ? `Cannot be less than ${area.corridorOccupied} (currently occupied)`
+                : 'Unnumbered overflow slots, e.g. corridor space'
+            }
+          />
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button variant="contained" onClick={() => void submit()} disabled={isInvalid || saving}>
+          {saving ? 'Saving…' : 'Save Changes'}
         </Button>
       </DialogActions>
     </Dialog>
