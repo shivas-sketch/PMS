@@ -757,6 +757,7 @@ function CapacityDetailTable({
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [areaFilter, setAreaFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'slot' | 'corridor'>('all');
 
   const allSlots = areas.flatMap((a) =>
     (areaSlots[a.areaId] || []).map((s) => ({
@@ -766,7 +767,11 @@ function CapacityDetailTable({
   );
 
   const filteredSlots = allSlots.filter(
-    (s) => areaFilter === 'all' || s.areaName === areaFilter,
+    (s) =>
+      (areaFilter === 'all' || s.areaName === areaFilter) &&
+      (typeFilter === 'all' ||
+        (typeFilter === 'corridor' && !!s.isCorridorSlot) ||
+        (typeFilter === 'slot' && !s.isCorridorSlot)),
   );
 
   const paged = filteredSlots.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
@@ -800,6 +805,22 @@ function CapacityDetailTable({
               ))}
             </Select>
           </FormControl>
+          <FormControl size="small" sx={{ minWidth: 110 }}>
+            <InputLabel id="capacity-type-filter-label">Type</InputLabel>
+            <Select
+              labelId="capacity-type-filter-label"
+              value={typeFilter}
+              label="Type"
+              onChange={(e) => {
+                setTypeFilter(e.target.value as 'all' | 'slot' | 'corridor');
+                setPage(0);
+              }}
+            >
+              <MenuItem value="all">All</MenuItem>
+              <MenuItem value="slot">Slots</MenuItem>
+              <MenuItem value="corridor">Corridor</MenuItem>
+            </Select>
+          </FormControl>
           <IconButton onClick={onClose} aria-label="Close detail table">
             <CloseOutlinedIcon />
           </IconButton>
@@ -816,6 +837,7 @@ function CapacityDetailTable({
             <TableHead>
               <TableRow>
                 <TableCell>Area</TableCell>
+                <TableCell>Slot Type</TableCell>
                 <TableCell>Slot Number</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Vehicle</TableCell>
@@ -826,7 +848,20 @@ function CapacityDetailTable({
                 <TableRow key={s.slotId} hover>
                   <TableCell>{s.areaName}</TableCell>
                   <TableCell>
-                    <Typography fontWeight={700}>{s.slotNumber}</Typography>
+                    <Chip
+                      size="small"
+                      label={s.isCorridorSlot ? 'Corridor' : 'Slot'}
+                      color={s.isCorridorSlot ? 'secondary' : 'default'}
+                      variant="outlined"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Typography
+                      fontWeight={700}
+                      color={s.isCorridorSlot ? 'secondary.main' : 'text.primary'}
+                    >
+                      {s.isCorridorSlot ? `C-${s.slotNumber}` : s.slotNumber}
+                    </Typography>
                   </TableCell>
                   <TableCell>
                     <Chip
