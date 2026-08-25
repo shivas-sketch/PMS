@@ -570,7 +570,7 @@ function EntryDialog({
             >
               <MenuItem value="">— Any available —</MenuItem>
               {slots
-                .filter((slot) => !slot.slotNumber.toLowerCase().startsWith('corridor-'))
+                .filter((slot) => !slot.isCorridorSlot)
                 .map((slot) => (
                   <MenuItem key={slot.slotId} value={slot.slotId}>
                     {slot.slotNumber}

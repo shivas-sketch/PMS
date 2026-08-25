@@ -350,7 +350,11 @@ export function ParkingLayoutPage() {
                           position: 'relative',
                         }}
                       >
-                        <Typography fontWeight={700} fontSize={slot.isCorridorSlot ? 12 : 14}>
+                        <Typography
+                          fontWeight={700}
+                          fontSize={slot.isCorridorSlot ? 12 : 14}
+                          color={slot.isCorridorSlot ? 'secondary.main' : 'text.primary'}
+                        >
                           {slot.slotNumber}
                         </Typography>
                         <Chip

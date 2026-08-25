@@ -152,6 +152,7 @@ class ParkingSlotResponse(CamelModel):
     status: SlotStatus
     vehicle_number: Optional[str] = None
     session_id: Optional[str] = None
+    is_corridor_slot: bool = False
     created_at: datetime
     updated_at: datetime
 

@@ -395,19 +395,20 @@ class ParkingRepository:
         area = area_snapshot.to_dict() if area_snapshot.exists else None
 
         docs = list(self._slots_ref().where("areaId", "==", area_id).stream())
-        slots = [doc.to_dict() for doc in docs]
-        slots.sort(key=lambda s: s.get("slotNumber", ""))
+        regular_slots = [doc.to_dict() for doc in docs]
+        regular_slots.sort(key=lambda s: s.get("slotNumber", ""))
 
+        corridor_slots: List[dict] = []
         if area and int(area.get("corridorCapacity", 0)) > 0:
             now = _utcnow()
             area_created_at = area.get("createdAt") or now
             area_updated_at = area.get("updatedAt") or now
 
             # Map active corridor-parked sessions in this area to numbered
-            # references (corridor-1, corridor-2, ...). The exact N is not a
-            # physical slot, just a reference so the layout table can display
-            # corridor occupancy. We query by areaId only and filter the rest
-            # in Python to avoid needing a new composite Firestore index.
+            # references (1, 2, ...). The number is just a display reference so
+            # the layout table can show corridor occupancy. We query by areaId
+            # only and filter the rest in Python to avoid needing a new
+            # composite Firestore index.
             corridor_sessions = sorted(
                 [
                     s.to_dict()
@@ -424,10 +425,10 @@ class ParkingRepository:
 
             for i in range(1, corridor_capacity + 1):
                 session_id, vehicle_number = corridor_vehicles[i - 1] if i <= len(corridor_vehicles) else (None, None)
-                slots.append({
+                corridor_slots.append({
                     "slotId": f"{area_id}:corridor:{i}",
                     "areaId": area_id,
-                    "slotNumber": f"corridor-{i}",
+                    "slotNumber": str(i),
                     "status": "OCCUPIED" if i <= area.get("corridorOccupied", 0) else "AVAILABLE",
                     "vehicleNumber": vehicle_number,
                     "sessionId": session_id,
@@ -435,8 +436,11 @@ class ParkingRepository:
                     "updatedAt": area_updated_at,
                     "isCorridorSlot": True,
                 })
+            corridor_slots.sort(key=lambda s: s.get("slotNumber", ""))
 
-        return slots
+        # Keep regular slots first, then corridor slots, so numbering is not
+        # interleaved with any numeric physical slot names.
+        return regular_slots + corridor_slots
 
     def delete_slot(self, slot_id: str) -> None:
         snapshot = self._slot_ref(slot_id).get()
