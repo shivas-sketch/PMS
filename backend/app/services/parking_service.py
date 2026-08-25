@@ -73,9 +73,14 @@ class ParkingService:
                 pass
         return ParkingSessionResponse.model_validate(session)
 
-    def reassign_slot(self, vehicle_number: str, slot_id: str) -> ParkingSessionResponse:
+    def reassign_slot(self, vehicle_number: str, request: ReassignSlotRequest) -> ParkingSessionResponse:
         cleaned = clean_vehicle_number(vehicle_number)
-        session = self.repository.reassign_slot(cleaned, slot_id)
+        session = self.repository.reassign_slot(
+            cleaned,
+            new_slot_id=request.slot_id,
+            use_corridor=request.use_corridor,
+            area_id=request.area_id,
+        )
         return ParkingSessionResponse.model_validate(session)
 
     def list_vehicles(self, status: Optional[str] = "ACTIVE") -> VehicleListResponse:

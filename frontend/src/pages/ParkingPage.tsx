@@ -699,6 +699,7 @@ function ReassignSlotDialog({
   const [selectedAreaId, setSelectedAreaId] = useState('');
   const [slots, setSlots] = useState<ParkingSlot[]>([]);
   const [selectedSlotId, setSelectedSlotId] = useState('');
+  const [useCorridor, setUseCorridor] = useState(false);
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
 
@@ -716,6 +717,8 @@ function ReassignSlotDialog({
   }, [session.areaId]);
 
   useEffect(() => {
+    setSelectedSlotId('');
+    setUseCorridor(false);
     if (selectedAreaId) {
       void get<ParkingSlotList>(`/parking/areas/${selectedAreaId}/slots`)
         .then((data) => setSlots(data.slots.filter((s) => s.status === 'AVAILABLE')))
@@ -723,17 +726,22 @@ function ReassignSlotDialog({
     } else {
       setSlots([]);
     }
-    setSelectedSlotId('');
   }, [selectedAreaId]);
 
+  const selectedArea = areas.find((a) => a.areaId === selectedAreaId);
+
   const submit = async () => {
-    if (!selectedSlotId) return;
+    if (!useCorridor && !selectedSlotId) return;
+    if (useCorridor && !selectedAreaId) return;
     setSaving(true);
     setError(undefined);
     try {
+      const body = useCorridor
+        ? { useCorridor: true, areaId: selectedAreaId }
+        : { slotId: selectedSlotId };
       await patch<ParkingSession>(
         `/parking/vehicles/${encodeURIComponent(session.vehicleNumber)}/slot`,
-        { slotId: selectedSlotId },
+        body,
       );
       onReassigned();
     } catch (cause) {
@@ -771,23 +779,48 @@ function ReassignSlotDialog({
               </MenuItem>
             ))}
           </TextField>
-          <TextField
-            select
-            label="Available Slot"
-            value={selectedSlotId}
-            onChange={(e) => setSelectedSlotId(e.target.value)}
-            helperText={slots.length === 0 ? 'No available slots in this area' : 'Select a new slot'}
-            disabled={slots.length === 0}
-          >
-            {slots
-              .filter((slot) => !slot.isCorridorSlot)
-              .sort((a, b) => a.slotNumber.localeCompare(b.slotNumber, undefined, { numeric: true }))
-              .map((slot) => (
-                <MenuItem key={slot.slotId} value={slot.slotId}>
-                  {slot.slotNumber}
-                </MenuItem>
-              ))}
-          </TextField>
+          {selectedArea && selectedArea.corridorCapacity > 0 && (
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={useCorridor}
+                  onChange={(e) => setUseCorridor(e.target.checked)}
+                  disabled={selectedArea.corridorAvailable <= 0}
+                />
+              }
+              label={`Park in corridor (${selectedArea.corridorAvailable}/${selectedArea.corridorCapacity} free, unnumbered)`}
+            />
+          )}
+          {!useCorridor && (
+            <TextField
+              select
+              label="Available Slot"
+              value={selectedSlotId}
+              onChange={(e) => setSelectedSlotId(e.target.value)}
+              helperText={
+                selectedArea?.corridorCapacity && selectedArea.corridorAvailable > 0
+                  ? 'Or enable corridor parking above'
+                  : slots.length === 0
+                    ? 'No available slots in this area'
+                    : 'Select a new slot'
+              }
+              disabled={slots.length === 0}
+            >
+              {slots
+                .filter((slot) => !slot.isCorridorSlot)
+                .sort((a, b) => a.slotNumber.localeCompare(b.slotNumber, undefined, { numeric: true }))
+                .map((slot) => (
+                  <MenuItem key={slot.slotId} value={slot.slotId}>
+                    {slot.slotNumber}
+                  </MenuItem>
+                ))}
+            </TextField>
+          )}
+          {useCorridor && (
+            <Alert severity="info" sx={{ py: 0.5 }}>
+              Vehicle will be parked in the corridor of {selectedArea?.name}.
+            </Alert>
+          )}
         </Stack>
       </DialogContent>
       <DialogActions>
@@ -795,7 +828,7 @@ function ReassignSlotDialog({
         <Button
           variant="contained"
           onClick={() => void submit()}
-          disabled={!selectedSlotId || saving}
+          disabled={(!useCorridor && !selectedSlotId) || saving}
         >
           {saving ? 'Saving…' : submitLabel}
         </Button>

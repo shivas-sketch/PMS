@@ -241,10 +241,18 @@ class ParkingRepository:
         transaction = self.db.transaction()
         return _exit_vehicle_txn(transaction, self, cleaned)
 
-    def reassign_slot(self, vehicle_number: str, new_slot_id: str) -> dict:
+    def reassign_slot(
+        self,
+        vehicle_number: str,
+        new_slot_id: Optional[str] = None,
+        use_corridor: bool = False,
+        area_id: Optional[str] = None,
+    ) -> dict:
         cleaned = clean_vehicle_number(vehicle_number)
         transaction = self.db.transaction()
-        return _reassign_slot_txn(transaction, self, cleaned, new_slot_id)
+        return _reassign_slot_txn(
+            transaction, self, cleaned, new_slot_id, use_corridor, area_id
+        )
 
     def release_slot_for_pickup(self, session_id: str) -> dict:
         """Free a session's slot/area occupancy when a valet picks up the vehicle.
@@ -787,9 +795,11 @@ def _reassign_slot_txn(
     transaction: firestore.Transaction,
     repo: ParkingRepository,
     vehicle_number: str,
-    new_slot_id: str,
+    new_slot_id: Optional[str] = None,
+    use_corridor: bool = False,
+    new_area_id: Optional[str] = None,
 ) -> dict:
-    """Move a vehicle from its current slot to a new available slot."""
+    """Move a vehicle from its current slot to a new available slot or corridor space."""
     vehicle_ref = repo._vehicle_ref(vehicle_number)
 
     # --- reads ---
@@ -812,24 +822,41 @@ def _reassign_slot_txn(
     old_area_id = session_data.get("areaId")
     old_is_corridor = bool(session_data.get("isCorridorParking"))
 
-    # Read new slot
-    new_slot_ref = repo._slot_ref(new_slot_id)
-    new_slot_snapshot = new_slot_ref.get(transaction=transaction)
-    if not new_slot_snapshot.exists:
-        raise ParkingSlotNotFoundError()
-    new_slot_data = new_slot_snapshot.to_dict()
-    if new_slot_data.get("status") != "AVAILABLE":
-        raise SlotAlreadyOccupiedError("Selected slot is not available")
-
-    new_area_id = new_slot_data.get("areaId")
-    new_slot_number = new_slot_data.get("slotNumber")
-
-    # Read new area for name
+    # Validate and read destination
+    new_slot_snapshot = None
+    new_slot_number: Optional[str] = None
     new_area_name = None
-    new_area_ref = repo._area_ref(new_area_id)
-    new_area_snapshot = new_area_ref.get(transaction=transaction)
-    if new_area_snapshot.exists:
-        new_area_name = new_area_snapshot.to_dict().get("name")
+    new_area_ref = None
+    new_area_snapshot = None
+
+    if use_corridor:
+        if not new_area_id:
+            raise ParkingAreaNotFoundError("Area is required for corridor parking")
+        new_area_ref = repo._area_ref(new_area_id)
+        new_area_snapshot = new_area_ref.get(transaction=transaction)
+        if not new_area_snapshot.exists:
+            raise ParkingAreaNotFoundError()
+        area_data = new_area_snapshot.to_dict()
+        if int(area_data.get("corridorAvailable", 0)) <= 0:
+            raise CorridorFullError()
+        new_area_name = area_data.get("name")
+        new_slot_number = "Corridor"
+    elif new_slot_id:
+        new_slot_ref = repo._slot_ref(new_slot_id)
+        new_slot_snapshot = new_slot_ref.get(transaction=transaction)
+        if not new_slot_snapshot.exists:
+            raise ParkingSlotNotFoundError()
+        new_slot_data = new_slot_snapshot.to_dict()
+        if new_slot_data.get("status") != "AVAILABLE":
+            raise SlotAlreadyOccupiedError("Selected slot is not available")
+        new_area_id = new_slot_data.get("areaId")
+        new_slot_number = new_slot_data.get("slotNumber")
+        new_area_ref = repo._area_ref(new_area_id)
+        new_area_snapshot = new_area_ref.get(transaction=transaction)
+        if new_area_snapshot.exists:
+            new_area_name = new_area_snapshot.to_dict().get("name")
+    else:
+        raise ParkingSlotNotFoundError("Either slot_id or use_corridor is required")
 
     # Read old slot and area if they exist
     old_slot_snapshot = None
@@ -860,7 +887,7 @@ def _reassign_slot_txn(
             "updatedAt": now,
         })
 
-    # Free old corridor space (mutually exclusive with old_slot_id)
+    # Free old corridor space
     if old_is_corridor and old_area_id and old_area_ref and old_area_snapshot and old_area_snapshot.exists:
         transaction.update(old_area_ref, {
             "corridorAvailable": firestore.Increment(1),
@@ -868,13 +895,39 @@ def _reassign_slot_txn(
             "updatedAt": now,
         })
 
-    # Occupy new slot
-    transaction.update(new_slot_ref, {
-        "status": "OCCUPIED",
-        "vehicleNumber": vehicle_number,
-        "sessionId": active_session_id,
-        "updatedAt": now,
-    })
+    # Occupy new slot / corridor space
+    if use_corridor:
+        if new_area_ref and new_area_snapshot and new_area_snapshot.exists:
+            transaction.update(new_area_ref, {
+                "corridorAvailable": firestore.Increment(-1),
+                "corridorOccupied": firestore.Increment(1),
+                "updatedAt": now,
+            })
+    elif new_slot_id and new_slot_snapshot and new_slot_snapshot.exists:
+        transaction.update(repo._slot_ref(new_slot_id), {
+            "status": "OCCUPIED",
+            "vehicleNumber": vehicle_number,
+            "sessionId": active_session_id,
+            "updatedAt": now,
+        })
+
+    # Update area regular counters when moving between a regular slot and a non-slot/corridor,
+    # or between different areas. Within the same area and both regular slots, the net is zero.
+    if old_slot_id and old_area_id and old_area_ref and old_area_snapshot and old_area_snapshot.exists:
+        # Freeing a regular slot always makes one more regular slot available.
+        transaction.update(old_area_ref, {
+            "availableSlots": firestore.Increment(1),
+            "occupiedSlots": firestore.Increment(-1),
+            "updatedAt": now,
+        })
+
+    if not use_corridor and new_slot_id and new_area_id and new_area_ref and new_area_snapshot and new_area_snapshot.exists:
+        # Occupying a regular slot always consumes one regular slot.
+        transaction.update(new_area_ref, {
+            "availableSlots": firestore.Increment(-1),
+            "occupiedSlots": firestore.Increment(1),
+            "updatedAt": now,
+        })
 
     # Update session
     transaction.update(session_ref, {
@@ -882,29 +935,8 @@ def _reassign_slot_txn(
         "slotNumber": new_slot_number,
         "areaId": new_area_id,
         "areaName": new_area_name,
-        "isCorridorParking": False,
+        "isCorridorParking": use_corridor,
     })
-
-    # Update area counters.
-    # If the vehicle is just moving slots within the same area, the net area
-    # counter change is 0. If the vehicle did not previously have a slot in the
-    # old area (e.g., added to an area only), we still need to decrement the new
-    # area because it is now physically occupying a slot there.
-    if old_slot_id and old_area_id and old_area_ref and old_area_snapshot and old_area_snapshot.exists:
-        if not same_area:
-            transaction.update(old_area_ref, {
-                "availableSlots": firestore.Increment(1),
-                "occupiedSlots": firestore.Increment(-1),
-                "updatedAt": now,
-            })
-
-    if new_area_id and new_area_ref and new_area_snapshot and new_area_snapshot.exists:
-        if not (same_area and old_slot_id):
-            transaction.update(new_area_ref, {
-                "availableSlots": firestore.Increment(-1),
-                "occupiedSlots": firestore.Increment(1),
-                "updatedAt": now,
-            })
 
     updated_session = session_data.copy()
     updated_session.update({
@@ -912,7 +944,7 @@ def _reassign_slot_txn(
         "slotNumber": new_slot_number,
         "areaId": new_area_id,
         "areaName": new_area_name,
-        "isCorridorParking": False,
+        "isCorridorParking": use_corridor,
     })
     return updated_session
 

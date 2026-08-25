@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from app.enums import ParkingTimelineStage
 from app.schemas.common import CamelModel
@@ -142,7 +142,17 @@ class UpdateSlotRequest(CamelModel):
 
 
 class ReassignSlotRequest(CamelModel):
-    slot_id: str = Field(..., min_length=1)
+    slot_id: Optional[str] = Field(None, min_length=1)
+    use_corridor: bool = False
+    area_id: Optional[str] = None
+
+    @model_validator(mode='after')
+    def validate_reassign(self):
+        if not self.use_corridor and not self.slot_id:
+            raise ValueError("Either slot_id or use_corridor is required")
+        if self.use_corridor and not self.area_id:
+            raise ValueError("area_id is required when use_corridor is true")
+        return self
 
 
 class ParkingSlotResponse(CamelModel):

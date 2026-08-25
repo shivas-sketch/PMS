@@ -346,9 +346,15 @@ class FakeParkingRepository:
                 self._areas[area_id]["totalSlots"] -= 1
                 self._areas[area_id]["availableSlots"] -= 1
 
-    def reassign_slot(self, vehicle_number: str, new_slot_id: str) -> dict:
+    def reassign_slot(
+        self,
+        vehicle_number: str,
+        new_slot_id: Optional[str] = None,
+        use_corridor: bool = False,
+        area_id: Optional[str] = None,
+    ) -> dict:
         with self._lock:
-            from app.exceptions import ParkingSlotNotFoundError
+            from app.exceptions import ParkingSlotNotFoundError, ParkingAreaNotFoundError, CorridorFullError
 
             vehicle = self._vehicles.get(vehicle_number)
             if vehicle is None:
@@ -359,19 +365,35 @@ class FakeParkingRepository:
                 raise VehicleAlreadyExitedError()
 
             session = self._sessions[active_session_id]
-
-            new_slot = self._slots.get(new_slot_id)
-            if new_slot is None:
-                raise ParkingSlotNotFoundError()
-            if new_slot["status"] != "AVAILABLE":
-                raise SlotAlreadyOccupiedError("Selected slot is not available")
-
             now = _utcnow()
+
             old_slot_id = session.get("slotId")
             old_area_id = session.get("areaId")
-            new_area_id = new_slot["areaId"]
-            new_slot_number = new_slot["slotNumber"]
-            new_area_name = self._areas.get(new_area_id, {}).get("name") if new_area_id else None
+            old_is_corridor = bool(session.get("isCorridorParking"))
+
+            if use_corridor:
+                if not area_id:
+                    raise ParkingAreaNotFoundError("Area is required for corridor parking")
+                if area_id not in self._areas:
+                    raise ParkingAreaNotFoundError()
+                area = self._areas[area_id]
+                if area.get("corridorAvailable", 0) <= 0:
+                    raise CorridorFullError()
+                new_area_id = area_id
+                new_slot_number = "Corridor"
+                new_area_name = area.get("name")
+            elif new_slot_id:
+                new_slot = self._slots.get(new_slot_id)
+                if new_slot is None:
+                    raise ParkingSlotNotFoundError()
+                if new_slot["status"] != "AVAILABLE":
+                    raise SlotAlreadyOccupiedError("Selected slot is not available")
+                new_area_id = new_slot["areaId"]
+                new_slot_number = new_slot["slotNumber"]
+                new_area_name = self._areas.get(new_area_id, {}).get("name") if new_area_id else None
+            else:
+                raise ParkingSlotNotFoundError("Either slot_id or use_corridor is required")
+
             same_area = old_area_id == new_area_id
 
             # Free old slot
@@ -381,25 +403,37 @@ class FakeParkingRepository:
                 self._slots[old_slot_id]["sessionId"] = None
                 self._slots[old_slot_id]["updatedAt"] = now
 
-            # Occupy new slot
-            new_slot["status"] = "OCCUPIED"
-            new_slot["vehicleNumber"] = vehicle_number
-            new_slot["sessionId"] = active_session_id
-            new_slot["updatedAt"] = now
+            # Free old corridor space
+            if old_is_corridor and old_area_id and old_area_id in self._areas:
+                self._areas[old_area_id]["corridorAvailable"] += 1
+                self._areas[old_area_id]["corridorOccupied"] = max(0, self._areas[old_area_id]["corridorOccupied"] - 1)
+                self._areas[old_area_id]["updatedAt"] = now
+
+            # Occupy new slot / corridor
+            if use_corridor:
+                self._areas[new_area_id]["corridorAvailable"] = max(0, self._areas[new_area_id]["corridorAvailable"] - 1)
+                self._areas[new_area_id]["corridorOccupied"] += 1
+                self._areas[new_area_id]["updatedAt"] = now
+            elif new_slot_id and new_slot_id in self._slots:
+                self._slots[new_slot_id]["status"] = "OCCUPIED"
+                self._slots[new_slot_id]["vehicleNumber"] = vehicle_number
+                self._slots[new_slot_id]["sessionId"] = active_session_id
+                self._slots[new_slot_id]["updatedAt"] = now
 
             # Update session
-            session["slotId"] = new_slot_id
+            session["slotId"] = new_slot_id if not use_corridor else None
             session["slotNumber"] = new_slot_number
             session["areaId"] = new_area_id
             session["areaName"] = new_area_name
+            session["isCorridorParking"] = use_corridor
 
-            # Update area counters
-            if old_slot_id and old_area_id and old_area_id in self._areas and not same_area:
+            # Update area regular counters
+            if old_slot_id and old_area_id and old_area_id in self._areas:
                 self._areas[old_area_id]["availableSlots"] += 1
                 self._areas[old_area_id]["occupiedSlots"] = max(0, self._areas[old_area_id]["occupiedSlots"] - 1)
                 self._areas[old_area_id]["updatedAt"] = now
 
-            if new_area_id and new_area_id in self._areas and not (same_area and old_slot_id):
+            if not use_corridor and new_slot_id and new_area_id and new_area_id in self._areas:
                 self._areas[new_area_id]["availableSlots"] = max(0, self._areas[new_area_id]["availableSlots"] - 1)
                 self._areas[new_area_id]["occupiedSlots"] += 1
                 self._areas[new_area_id]["updatedAt"] = now

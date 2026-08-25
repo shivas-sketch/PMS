@@ -103,10 +103,10 @@ def reassign_slot(
     payload: ReassignSlotRequest,
     parking_service: ParkingService = Depends(get_parking_service),
 ) -> ParkingSessionResponse:
-    session = parking_service.reassign_slot(vehicle_number, payload.slot_id)
+    session = parking_service.reassign_slot(vehicle_number, payload)
     logger.info(
-        "parking_reassign vehicle_number=%s new_slot_id=%s session_id=%s",
-        session.vehicle_number, payload.slot_id, session.session_id,
+        "parking_reassign vehicle_number=%s use_corridor=%s new_slot_id=%s session_id=%s",
+        session.vehicle_number, payload.use_corridor, payload.slot_id, session.session_id,
     )
     return session
 
