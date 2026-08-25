@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -16,6 +16,8 @@ import {
   Paper,
   Stack,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -47,6 +49,13 @@ export function ParkingLayoutPage() {
   const [selectedArea, setSelectedArea] = useState<ParkingArea | null>(null);
   const [slots, setSlots] = useState<ParkingSlot[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotFilter, setSlotFilter] = useState<'all' | 'regular' | 'corridor'>('all');
+
+  const filteredSlots = useMemo(() => {
+    if (slotFilter === 'corridor') return slots.filter((s) => s.isCorridorSlot);
+    if (slotFilter === 'regular') return slots.filter((s) => !s.isCorridorSlot);
+    return slots;
+  }, [slots, slotFilter]);
   const [slotDialogOpen, setSlotDialogOpen] = useState(false);
   const [bulkSlotDialogOpen, setBulkSlotDialogOpen] = useState(false);
   const [editingSlot, setEditingSlot] = useState<ParkingSlot | null>(null);
@@ -274,20 +283,42 @@ export function ParkingLayoutPage() {
 
               {slotsLoading ? (
                 <LinearProgress />
-              ) : slots.length === 0 ? (
-                <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-                  No slots in this area yet.
-                </Typography>
               ) : (
-                <Box
-                  sx={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 1,
-                  }}
-                >
-                  {slots.map((slot) => (
-                    <Tooltip
+                <>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                    <ToggleButtonGroup
+                      value={slotFilter}
+                      exclusive
+                      size="small"
+                      onChange={(_, value) => value && setSlotFilter(value)}
+                      aria-label="slot filter"
+                    >
+                      <ToggleButton value="all" aria-label="all slots">All</ToggleButton>
+                      <ToggleButton value="regular" aria-label="regular slots">Slots</ToggleButton>
+                      <ToggleButton value="corridor" aria-label="corridor slots">Corridor</ToggleButton>
+                    </ToggleButtonGroup>
+                    <Typography variant="caption" color="text.secondary">
+                      Showing {filteredSlots.length} of {slots.length}
+                    </Typography>
+                  </Stack>
+                  {filteredSlots.length === 0 ? (
+                    <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                      {slotFilter === 'corridor'
+                        ? 'No corridor slots in this area.'
+                        : slotFilter === 'regular'
+                          ? 'No regular slots in this area.'
+                          : 'No slots in this area yet.'}
+                    </Typography>
+                  ) : (
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: 1,
+                      }}
+                    >
+                      {filteredSlots.map((slot) => (
+                        <Tooltip
                       key={slot.slotId}
                       title={
                         slot.isCorridorSlot
@@ -360,9 +391,11 @@ export function ParkingLayoutPage() {
                           </IconButton>
                         )}
                       </Paper>
-                    </Tooltip>
-                  ))}
-                </Box>
+                        </Tooltip>
+                      ))}
+                    </Box>
+                  )}
+                </>
               )}
             </Paper>
           ) : (
