@@ -9,6 +9,8 @@ import {
   CircularProgress,
   IconButton,
   Stack,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
@@ -18,6 +20,14 @@ import { AssignSlotDialog } from '../components/AssignSlotDialog';
 import type { ParkingSession, ParkingTimelineStage, VehicleList } from '../types';
 import { TIMELINE_STAGE_DISPLAY_NAMES } from '../types';
 import type { ValetIdentity } from '../roles';
+
+function formatTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
+}
 
 const DRIVER_ACTIONS: Record<string, { label: string; endpoint: string }> = {
   ASSIGNED_FOR_PARKING: { label: 'Accept Parking Request', endpoint: 'accept-parking-request' },
@@ -41,18 +51,16 @@ export function DriverTasksPage({ driver }: Props) {
   const [busy, setBusy] = useState<string>();
   const [slotSession, setSlotSession] = useState<ParkingSession | null>(null);
   const [pendingEndpoint, setPendingEndpoint] = useState<string | null>(null);
+  const [view, setView] = useState<'pending' | 'history'>('pending');
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(undefined);
     try {
-      const data = await get<VehicleList>('/parking/vehicles?status=ACTIVE');
+      const data = await get<VehicleList>('/parking/vehicles?status=ALL');
       setSessions(
         data.vehicles.filter(
-          (s) =>
-            !!s.currentStage &&
-            DRIVER_STAGES.includes(s.currentStage) &&
-            (s.currentValetId === driver.id || s.currentValetName === driver.name)
+          (s) => s.currentValetId === driver.id || s.currentValetName === driver.name
         )
       );
     } catch (cause) {
@@ -67,6 +75,16 @@ export function DriverTasksPage({ driver }: Props) {
     const interval = setInterval(() => void load(), 10000);
     return () => clearInterval(interval);
   }, [load]);
+
+  const isAssignedToMe = (s: ParkingSession) => s.currentValetId === driver.id || s.currentValetName === driver.name;
+
+  const pendingSessions = sessions.filter(
+    (s) => s.status === 'ACTIVE' && !!s.currentStage && DRIVER_STAGES.includes(s.currentStage) && isAssignedToMe(s)
+  );
+
+  const historySessions = sessions.filter(
+    (s) => s.status === 'EXITED' && isAssignedToMe(s)
+  );
 
   const runAction = async (session: ParkingSession, endpoint: string) => {
     if (endpoint === 'mark-parked' && !session.slotNumber) {
@@ -91,14 +109,27 @@ export function DriverTasksPage({ driver }: Props) {
 
   return (
     <Stack spacing={3}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center">
+      <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
         <Box>
-          <Typography variant="h4">My Tasks</Typography>
-          <Typography color="text.secondary">Vehicles waiting on a valet action.</Typography>
+          <Typography variant="h4">{view === 'pending' ? 'My Tasks' : 'My History'}</Typography>
+          <Typography color="text.secondary">
+            {view === 'pending' ? 'Vehicles waiting on a valet action.' : 'Vehicles you have previously handled.'}
+          </Typography>
         </Box>
-        <IconButton onClick={() => void load()} aria-label="Refresh tasks">
-          <RefreshOutlinedIcon />
-        </IconButton>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <ToggleButtonGroup
+            value={view}
+            exclusive
+            onChange={(_, value) => value && setView(value)}
+            size="small"
+          >
+            <ToggleButton value="pending">Pending</ToggleButton>
+            <ToggleButton value="history">History</ToggleButton>
+          </ToggleButtonGroup>
+          <IconButton onClick={() => void load()} aria-label="Refresh tasks">
+            <RefreshOutlinedIcon />
+          </IconButton>
+        </Stack>
       </Stack>
 
       {error && <Alert severity="error">{error}</Alert>}
@@ -107,7 +138,7 @@ export function DriverTasksPage({ driver }: Props) {
         <Box sx={{ display: 'grid', placeItems: 'center', py: 6 }}>
           <CircularProgress />
         </Box>
-      ) : sessions.length === 0 ? (
+      ) : view === 'pending' && pendingSessions.length === 0 ? (
         <Card>
           <CardContent>
             <Typography color="text.secondary" textAlign="center">
@@ -115,9 +146,17 @@ export function DriverTasksPage({ driver }: Props) {
             </Typography>
           </CardContent>
         </Card>
+      ) : view === 'history' && historySessions.length === 0 ? (
+        <Card>
+          <CardContent>
+            <Typography color="text.secondary" textAlign="center">
+              No completed tasks yet.
+            </Typography>
+          </CardContent>
+        </Card>
       ) : (
         <Stack spacing={2}>
-          {sessions.map((session) => {
+          {(view === 'pending' ? pendingSessions : historySessions).map((session) => {
             const action = session.currentStage ? DRIVER_ACTIONS[session.currentStage] : undefined;
             const isBusy = busy === session.sessionId;
             return (
@@ -154,6 +193,9 @@ export function DriverTasksPage({ driver }: Props) {
                       >
                         {action.label}
                       </Button>
+                    )}
+                    {view === 'history' && (
+                      <Chip size="small" color="success" variant="outlined" label={session.exitTime ? `Exited ${formatTime(session.exitTime)}` : 'Exited'} />
                     )}
                   </Stack>
                 </CardContent>
