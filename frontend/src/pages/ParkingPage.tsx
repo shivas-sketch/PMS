@@ -64,6 +64,17 @@ const NEXT_STAGE_ACTION: Record<string, { label: string; endpoint: string }> = {
   ARRIVED: { label: 'Deliver Vehicle', endpoint: 'delivered' },
 };
 
+// Actions that represent a physical valet step and should be performed
+// by the assigned driver from DriverTasksPage, not by the operator console.
+const DRIVER_ONLY_ENDPOINTS = new Set([
+  'accept-parking-request',
+  'mark-parked',
+  'accept-delivery',
+  'picked-up',
+  'arrived',
+  'delivered',
+]);
+
 type DriverAssignMode = 'parking' | 'delivery';
 
 const STATUS_FILTERS = ['ACTIVE', 'EXITED', 'ALL'] as const;
@@ -207,6 +218,8 @@ export function ParkingPage() {
                   const stageAction = session.currentStage ? NEXT_STAGE_ACTION[session.currentStage] : undefined;
                   const needsParkingDriver =
                     session.currentStage === 'ASSIGNED_FOR_PARKING' && !session.currentValetId;
+                  const isDriverOnly =
+                    stageAction && DRIVER_ONLY_ENDPOINTS.has(stageAction.endpoint) && !!session.currentValetId;
                   const isBusy = busy === session.vehicleNumber;
                   return (
                     <TableRow key={session.sessionId} hover>
@@ -283,6 +296,15 @@ export function ParkingPage() {
                                   >
                                     {isBusy ? <CircularProgress size={16} /> : <PlayArrowOutlinedIcon fontSize="small" />}
                                   </IconButton>
+                                </Tooltip>
+                              ) : isDriverOnly ? (
+                                <Tooltip title={`Waiting for ${session.currentValetName} to perform this step`}>
+                                  <Chip
+                                    size="small"
+                                    color="info"
+                                    variant="outlined"
+                                    label={session.currentValetName || 'Assigned'}
+                                  />
                                 </Tooltip>
                               ) : (
                                 stageAction && (
