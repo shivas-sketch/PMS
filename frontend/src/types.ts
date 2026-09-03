@@ -81,6 +81,8 @@ export type ParkingSession = {
   slotNumber?: string | null;
   isCorridorParking?: boolean;
   currentStage?: ParkingTimelineStage | null;
+  currentValetId?: string | null;
+  currentValetName?: string | null;
 };
 
 export type VehicleList = {

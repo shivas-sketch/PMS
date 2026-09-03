@@ -104,8 +104,19 @@ class FakeParkingRepository:
         sessions.sort(key=lambda s: s.get("entryTime") or _utcnow(), reverse=True)
         return [dict(s) for s in sessions[:limit]]
 
-    def add_vehicle(self, vehicle_number: str, wheel_category: int, vehicle_type: str, hospital_side=None, area_id=None, slot_id=None) -> dict:
+    def add_vehicle(
+        self,
+        vehicle_number: str,
+        wheel_category: int,
+        vehicle_type: str,
+        hospital_side=None,
+        area_id=None,
+        slot_id=None,
+        use_corridor: bool = False,
+    ) -> dict:
         with self._lock:
+            from app.exceptions import CorridorFullError, ParkingAreaNotFoundError, ParkingSlotNotFoundError
+
             available_slots = int(self._config.get("availableSlots", 0))
             if available_slots <= 0:
                 raise ParkingFullError()
@@ -118,10 +129,16 @@ class FakeParkingRepository:
             session_counter = int(self._config.get("sessionCounter", 0)) + 1
             session_id = f"PS-{session_counter:06d}"
 
+            # Corridor parking (unnumbered overflow capacity) is mutually
+            # exclusive with a specific numbered slot and requires an area.
+            use_corridor = bool(use_corridor) and not slot_id
+
             area_name = None
             slot_number = None
-            if slot_id and slot_id in self._slots:
-                slot = self._slots[slot_id]
+            if slot_id:
+                slot = self._slots.get(slot_id)
+                if slot is None:
+                    raise ParkingSlotNotFoundError()
                 if slot["status"] != "AVAILABLE":
                     raise SlotAlreadyOccupiedError()
                 slot_number = slot["slotNumber"]
@@ -130,11 +147,24 @@ class FakeParkingRepository:
                 slot["vehicleNumber"] = vehicle_number
                 slot["sessionId"] = session_id
                 slot["updatedAt"] = now
-            if area_id and area_id in self._areas:
-                area_name = self._areas[area_id]["name"]
+
+            if area_id:
+                area = self._areas.get(area_id)
+                if area is None:
+                    raise ParkingAreaNotFoundError()
+                area_name = area["name"]
                 if slot_id:
-                    self._areas[area_id]["availableSlots"] -= 1
-                    self._areas[area_id]["occupiedSlots"] += 1
+                    area["availableSlots"] -= 1
+                    area["occupiedSlots"] += 1
+                if use_corridor:
+                    if int(area.get("corridorAvailable", 0)) <= 0:
+                        raise CorridorFullError()
+                    slot_number = "Corridor"
+                    area["corridorAvailable"] = max(0, int(area.get("corridorAvailable", 0)) - 1)
+                    area["corridorOccupied"] = int(area.get("corridorOccupied", 0)) + 1
+            elif use_corridor:
+                # Corridor parking requires a specific area; silently ignore otherwise.
+                use_corridor = False
 
             session_payload = {
                 "sessionId": session_id,
@@ -149,7 +179,10 @@ class FakeParkingRepository:
                 "areaName": area_name,
                 "slotId": slot_id,
                 "slotNumber": slot_number,
+                "isCorridorParking": use_corridor,
                 "currentStage": ParkingTimelineStage.ASSIGNED_FOR_PARKING.value,
+                "currentValetId": None,
+                "currentValetName": None,
                 "updatedAt": now,
             }
             self._sessions[session_id] = session_payload
@@ -234,10 +267,11 @@ class FakeParkingRepository:
             return dict(session)
 
     # --- parking areas & slots (fake) -----------------------------------
-    def create_area(self, name: str, area_type: str = "OTHER", description=None) -> dict:
+    def create_area(self, name: str, area_type: str = "OTHER", description=None, corridor_capacity: int = 0) -> dict:
         with self._lock:
             now = _utcnow()
             area_id = f"area-{len(self._areas) + 1}"
+            corridor_capacity = max(0, int(corridor_capacity or 0))
             payload = {
                 "areaId": area_id,
                 "name": name,
@@ -246,6 +280,9 @@ class FakeParkingRepository:
                 "totalSlots": 0,
                 "availableSlots": 0,
                 "occupiedSlots": 0,
+                "corridorCapacity": corridor_capacity,
+                "corridorAvailable": corridor_capacity,
+                "corridorOccupied": 0,
                 "createdAt": now,
                 "updatedAt": now,
             }
@@ -502,6 +539,9 @@ class FakeTimelineRepository:
             }
             self._events.setdefault(session_id, []).append(payload)
             session["currentStage"] = stage_value
+            if valet_id is not None or valet_name is not None:
+                session["currentValetId"] = valet_id
+                session["currentValetName"] = valet_name
             session["updatedAt"] = now
             return dict(payload)
 

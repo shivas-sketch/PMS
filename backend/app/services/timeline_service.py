@@ -92,14 +92,49 @@ class TimelineService:
     # repository side-effect (slot release, vehicle exit) so capacity and
     # slot counters stay correct without ever being adjusted twice.
 
-    def accept_parking_request(self, session_id: str, notes: Optional[str] = None) -> ParkingTimelineEventResponse:
-        return self.add_event(session_id, ParkingTimelineStage.PARKING_REQUEST_ACCEPTED, notes=notes)
+    def assign_for_parking(
+        self,
+        session_id: str,
+        valet_id: Optional[str] = None,
+        valet_name: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> ParkingTimelineEventResponse:
+        return self.add_event(
+            session_id, ParkingTimelineStage.ASSIGNED_FOR_PARKING, valet_id=valet_id, valet_name=valet_name, notes=notes
+        )
 
-    def mark_parked(self, session_id: str, notes: Optional[str] = None) -> ParkingTimelineEventResponse:
-        return self.add_event(session_id, ParkingTimelineStage.PARKED, notes=notes)
+    def accept_parking_request(
+        self,
+        session_id: str,
+        valet_id: Optional[str] = None,
+        valet_name: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> ParkingTimelineEventResponse:
+        return self.add_event(
+            session_id, ParkingTimelineStage.PARKING_REQUEST_ACCEPTED, valet_id=valet_id, valet_name=valet_name, notes=notes
+        )
 
-    def request_delivery(self, session_id: str, notes: Optional[str] = None) -> ParkingTimelineEventResponse:
-        return self.add_event(session_id, ParkingTimelineStage.REQUESTED_FOR_DELIVERY, notes=notes)
+    def mark_parked(
+        self,
+        session_id: str,
+        valet_id: Optional[str] = None,
+        valet_name: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> ParkingTimelineEventResponse:
+        return self.add_event(
+            session_id, ParkingTimelineStage.PARKED, valet_id=valet_id, valet_name=valet_name, notes=notes
+        )
+
+    def request_delivery(
+        self,
+        session_id: str,
+        valet_id: Optional[str] = None,
+        valet_name: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> ParkingTimelineEventResponse:
+        return self.add_event(
+            session_id, ParkingTimelineStage.REQUESTED_FOR_DELIVERY, valet_id=valet_id, valet_name=valet_name, notes=notes
+        )
 
     def assign_for_delivery(
         self,
@@ -123,26 +158,54 @@ class TimelineService:
             session_id, ParkingTimelineStage.DELIVERY_REQUEST_ACCEPTED, valet_id=valet_id, valet_name=valet_name, notes=notes
         )
 
-    def picked_up(self, session_id: str, notes: Optional[str] = None) -> ParkingTimelineEventResponse:
+    def picked_up(
+        self,
+        session_id: str,
+        valet_id: Optional[str] = None,
+        valet_name: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> ParkingTimelineEventResponse:
         # Record the event first (while the session still references the
         # slot the vehicle is being picked up from), then release the slot.
         session = self._get_session_or_404(session_id)
-        event = self.add_event(session_id, ParkingTimelineStage.PICKED_UP, notes=notes)
+        event = self.add_event(session_id, ParkingTimelineStage.PICKED_UP, valet_id=valet_id, valet_name=valet_name, notes=notes)
         if session.get("slotId") or session.get("isCorridorParking"):
             self.parking_repository.release_slot_for_pickup(session_id)
         return event
 
-    def arrived(self, session_id: str, notes: Optional[str] = None) -> ParkingTimelineEventResponse:
-        return self.add_event(session_id, ParkingTimelineStage.ARRIVED, notes=notes)
+    def arrived(
+        self,
+        session_id: str,
+        valet_id: Optional[str] = None,
+        valet_name: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> ParkingTimelineEventResponse:
+        return self.add_event(
+            session_id, ParkingTimelineStage.ARRIVED, valet_id=valet_id, valet_name=valet_name, notes=notes
+        )
 
-    def manual_override(self, session_id: str, notes: Optional[str] = None) -> ParkingTimelineEventResponse:
-        return self.add_event(session_id, ParkingTimelineStage.REQUESTED_FOR_MANUAL_OVERRIDE, notes=notes)
+    def manual_override(
+        self,
+        session_id: str,
+        valet_id: Optional[str] = None,
+        valet_name: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> ParkingTimelineEventResponse:
+        return self.add_event(
+            session_id, ParkingTimelineStage.REQUESTED_FOR_MANUAL_OVERRIDE, valet_id=valet_id, valet_name=valet_name, notes=notes
+        )
 
-    def deliver(self, session_id: str, notes: Optional[str] = None) -> ParkingTimelineEventResponse:
+    def deliver(
+        self,
+        session_id: str,
+        valet_id: Optional[str] = None,
+        valet_name: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> ParkingTimelineEventResponse:
         session = self._get_session_or_404(session_id)
         if session.get("status") == "EXITED":
             raise VehicleAlreadyExitedError()
-        event = self.add_event(session_id, ParkingTimelineStage.DELIVERED, notes=notes)
+        event = self.add_event(session_id, ParkingTimelineStage.DELIVERED, valet_id=valet_id, valet_name=valet_name, notes=notes)
         # exit_vehicle only releases slot/area counters if the session still
         # references a slot (i.e. `picked_up` was never called) - global
         # config counters are always adjusted exactly once, here.

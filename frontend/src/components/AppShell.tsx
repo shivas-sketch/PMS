@@ -27,6 +27,7 @@ import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined';
 import LocalHospitalOutlinedIcon from '@mui/icons-material/LocalHospitalOutlined';
 import ViewQuiltOutlinedIcon from '@mui/icons-material/ViewQuiltOutlined';
 import CloseOutlinedIcon from '@mui/icons-material/CloseOutlined';
+import LogoutOutlinedIcon from '@mui/icons-material/LogoutOutlined';
 import { get, post } from '../api/client';
 import type { AlertList, ParkingAlert, AlertSeverity } from '../types';
 
@@ -38,11 +39,17 @@ type Props = {
   mode: 'light' | 'dark';
   toggleMode: () => void;
   children: ReactNode;
+  /** Subset of pages to show in the nav; defaults to every page (admin). */
+  navItems?: Page[];
+  /** Label shown under the app title, e.g. the signed-in role/person. */
+  identityLabel?: string;
+  /** If provided, shows a "Switch Role" action to return to the role picker. */
+  onSwitchRole?: () => void;
 };
 
 const drawerWidth = 260;
 
-const nav: { page: Page; label: string; icon: ReactNode }[] = [
+const ALL_NAV: { page: Page; label: string; icon: ReactNode }[] = [
   { page: 'dashboard', label: 'Dashboard', icon: <DashboardOutlinedIcon /> },
   { page: 'recognition', label: 'Recognition', icon: <PhotoCameraOutlinedIcon /> },
   { page: 'parking', label: 'Parking', icon: <LocalParkingOutlinedIcon /> },
@@ -51,7 +58,8 @@ const nav: { page: Page; label: string; icon: ReactNode }[] = [
   { page: 'alerts', label: 'Alerts', icon: <NotificationsOutlinedIcon /> },
 ];
 
-export function AppShell({ page, onPageChange, mode, toggleMode, children }: Props) {
+export function AppShell({ page, onPageChange, mode, toggleMode, children, navItems, identityLabel, onSwitchRole }: Props) {
+  const nav = navItems ? ALL_NAV.filter((item) => navItems.includes(item.page)) : ALL_NAV;
   const [alerts, setAlerts] = useState<ParkingAlert[]>([]);
   const [notifAnchor, setNotifAnchor] = useState<HTMLElement | null>(null);
 
@@ -252,6 +260,22 @@ export function AppShell({ page, onPageChange, mode, toggleMode, children }: Pro
         <Box sx={{ flexGrow: 1 }} />
         <Divider />
         <Box sx={{ p: 2 }}>
+          {identityLabel && (
+            <Typography variant="body2" fontWeight={600} noWrap>
+              {identityLabel}
+            </Typography>
+          )}
+          {onSwitchRole && (
+            <ListItemButton
+              onClick={onSwitchRole}
+              sx={{ mx: -1, mt: 0.5, borderRadius: 1.5, py: 0.5 }}
+            >
+              <ListItemIcon sx={{ minWidth: 32 }}>
+                <LogoutOutlinedIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText primary="Switch Role" primaryTypographyProps={{ variant: 'body2' }} />
+            </ListItemButton>
+          )}
           <Typography variant="caption" color="text.secondary">
             {`© ${new Date().getFullYear()} Hospital Valet Parking`}
           </Typography>

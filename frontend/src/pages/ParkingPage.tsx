@@ -50,6 +50,7 @@ import type {
   ParkingTimelineList,
 } from '../types';
 import { HOSPITAL_SIDES, TIMELINE_STAGE_DISPLAY_NAMES } from '../types';
+import { VALET_DRIVERS, type ValetIdentity } from '../roles';
 
 const NEXT_STAGE_ACTION: Record<string, { label: string; endpoint: string }> = {
   ASSIGNED_FOR_PARKING: { label: 'Accept Parking Request', endpoint: 'accept-parking-request' },
@@ -61,6 +62,8 @@ const NEXT_STAGE_ACTION: Record<string, { label: string; endpoint: string }> = {
   PICKED_UP: { label: 'Mark Arrived', endpoint: 'arrived' },
   ARRIVED: { label: 'Deliver Vehicle', endpoint: 'delivered' },
 };
+
+type DriverAssignMode = 'parking' | 'delivery';
 
 const STATUS_FILTERS = ['ACTIVE', 'EXITED', 'ALL'] as const;
 
@@ -75,6 +78,8 @@ export function ParkingPage() {
   const [timelineSession, setTimelineSession] = useState<ParkingSession | null>(null);
   const [confirmOverride, setConfirmOverride] = useState<ParkingSession | null>(null);
   const [editSession, setEditSession] = useState<ParkingSession | null>(null);
+  const [assignDriverSession, setAssignDriverSession] = useState<ParkingSession | null>(null);
+  const [assignDriverMode, setAssignDriverMode] = useState<DriverAssignMode>('parking');
   const [busy, setBusy] = useState<string>();
 
   const load = useCallback(async () => {
@@ -108,11 +113,20 @@ export function ParkingPage() {
     }
   };
 
-  const runStageAction = async (session: ParkingSession, endpoint: string) => {
+  const runStageAction = async (session: ParkingSession, endpoint: string, body?: Record<string, unknown>) => {
     setBusy(session.vehicleNumber);
     setError(undefined);
     try {
-      await post(`/parking/sessions/${encodeURIComponent(session.sessionId)}/${endpoint}`);
+      // Forward the driver already assigned to this session so later stages
+      // (accept, mark-parked, picked-up, ...) keep the same valet identity
+      // unless the caller explicitly supplies a different one (e.g. a fresh
+      // driver assignment).
+      const payload = {
+        valetId: session.currentValetId ?? undefined,
+        valetName: session.currentValetName ?? undefined,
+        ...body,
+      };
+      await post(`/parking/sessions/${encodeURIComponent(session.sessionId)}/${endpoint}`, payload);
       await load();
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Unable to update vehicle stage.');
@@ -181,6 +195,7 @@ export function ParkingPage() {
                   <TableCell>Slot</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Stage</TableCell>
+                  <TableCell>Driver</TableCell>
                   <TableCell>Entry Time</TableCell>
                   <TableCell>Exit Time</TableCell>
                   <TableCell align="right">Action</TableCell>
@@ -189,6 +204,8 @@ export function ParkingPage() {
               <TableBody>
                 {sessions.map((session) => {
                   const stageAction = session.currentStage ? NEXT_STAGE_ACTION[session.currentStage] : undefined;
+                  const needsParkingDriver =
+                    session.currentStage === 'ASSIGNED_FOR_PARKING' && !session.currentValetId;
                   const isBusy = busy === session.vehicleNumber;
                   return (
                     <TableRow key={session.sessionId} hover>
@@ -220,6 +237,15 @@ export function ParkingPage() {
                           '—'
                         )}
                       </TableCell>
+                      <TableCell>
+                        {session.currentValetName ? (
+                          session.currentValetName
+                        ) : needsParkingDriver ? (
+                          <Chip size="small" color="warning" variant="outlined" label="Unassigned" />
+                        ) : (
+                          '—'
+                        )}
+                      </TableCell>
                       <TableCell>{formatTime(session.entryTime)}</TableCell>
                       <TableCell>{session.exitTime ? formatTime(session.exitTime) : '—'}</TableCell>
                       <TableCell align="right">
@@ -243,24 +269,43 @@ export function ParkingPage() {
                           )}
                           {session.status === 'ACTIVE' && (
                             <>
-                              {stageAction && (
-                                <Tooltip title={stageAction.label}>
+                              {needsParkingDriver ? (
+                                <Tooltip title="Assign Driver for Parking">
                                   <IconButton
                                     size="small"
-                                    color="success"
+                                    color="primary"
                                     disabled={isBusy}
                                     onClick={() => {
-                                      if (stageAction.endpoint === 'mark-parked' && !session.slotNumber) {
-                                        setReassignSession(session);
-                                        setPostReassignAction('mark-parked');
-                                      } else {
-                                        void runStageAction(session, stageAction.endpoint);
-                                      }
+                                      setAssignDriverMode('parking');
+                                      setAssignDriverSession(session);
                                     }}
                                   >
                                     {isBusy ? <CircularProgress size={16} /> : <PlayArrowOutlinedIcon fontSize="small" />}
                                   </IconButton>
                                 </Tooltip>
+                              ) : (
+                                stageAction && (
+                                  <Tooltip title={stageAction.label}>
+                                    <IconButton
+                                      size="small"
+                                      color="success"
+                                      disabled={isBusy}
+                                      onClick={() => {
+                                        if (stageAction.endpoint === 'mark-parked' && !session.slotNumber) {
+                                          setReassignSession(session);
+                                          setPostReassignAction('mark-parked');
+                                        } else if (stageAction.endpoint === 'assign-for-delivery') {
+                                          setAssignDriverMode('delivery');
+                                          setAssignDriverSession(session);
+                                        } else {
+                                          void runStageAction(session, stageAction.endpoint);
+                                        }
+                                      }}
+                                    >
+                                      {isBusy ? <CircularProgress size={16} /> : <PlayArrowOutlinedIcon fontSize="small" />}
+                                    </IconButton>
+                                  </Tooltip>
+                                )
                               )}
                               <Tooltip title="Manual override">
                                 <IconButton
@@ -304,7 +349,7 @@ export function ParkingPage() {
                 })}
                 {sessions.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={11} align="center">
+                    <TableCell colSpan={12} align="center">
                       No sessions found.
                     </TableCell>
                   </TableRow>
@@ -376,6 +421,22 @@ export function ParkingPage() {
         />
       )}
 
+      {assignDriverSession && (
+        <AssignDriverDialog
+          session={assignDriverSession}
+          mode={assignDriverMode}
+          onClose={() => setAssignDriverSession(null)}
+          onAssigned={(driver) => {
+            const endpoint = assignDriverMode === 'parking' ? 'assign-for-parking' : 'assign-for-delivery';
+            void runStageAction(assignDriverSession, endpoint, {
+              valetId: driver.id,
+              valetName: driver.name,
+            });
+            setAssignDriverSession(null);
+          }}
+        />
+      )}
+
       <Dialog open={confirmOverride !== null} onClose={() => setConfirmOverride(null)}>
         <DialogTitle>Confirm Manual Override</DialogTitle>
         <DialogContent>
@@ -418,6 +479,38 @@ function StatRow({ label, value }: { label: string; value: number }) {
   );
 }
 
+function AssignDriverDialog({
+  session,
+  mode,
+  onClose,
+  onAssigned,
+}: {
+  session: ParkingSession;
+  mode: DriverAssignMode;
+  onClose: () => void;
+  onAssigned: (driver: ValetIdentity) => void;
+}) {
+  return (
+    <Dialog open onClose={onClose} fullWidth maxWidth="xs">
+      <DialogTitle>
+        {mode === 'parking' ? 'Assign Driver to Park' : 'Assign Driver for Delivery'} — {session.vehicleNumber}
+      </DialogTitle>
+      <DialogContent>
+        <Stack spacing={1} sx={{ pt: 1 }}>
+          {VALET_DRIVERS.map((driver) => (
+            <Button key={driver.id} variant="outlined" onClick={() => onAssigned(driver)}>
+              {driver.name}
+            </Button>
+          ))}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 function EntryDialog({
   open,
   onClose,
@@ -438,6 +531,7 @@ function EntryDialog({
   const [slots, setSlots] = useState<ParkingSlot[]>([]);
   const [selectedSlotId, setSelectedSlotId] = useState('');
   const [useCorridor, setUseCorridor] = useState(false);
+  const [selectedDriverId, setSelectedDriverId] = useState('');
 
   useEffect(() => {
     if (open) {
@@ -471,6 +565,8 @@ function EntryDialog({
         areaId: selectedAreaId || undefined,
         slotId: useCorridor ? undefined : selectedSlotId || undefined,
         useCorridor: useCorridor || undefined,
+        valetId: selectedDriverId || undefined,
+        valetName: VALET_DRIVERS.find((d) => d.id === selectedDriverId)?.name || undefined,
       });
       setVehicleNumber('');
       setWheelCategory('4');
@@ -479,6 +575,7 @@ function EntryDialog({
       setSelectedAreaId('');
       setSelectedSlotId('');
       setUseCorridor(false);
+      setSelectedDriverId('');
       onCreated();
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Unable to add vehicle.');
@@ -531,6 +628,23 @@ function EntryDialog({
             ))}
           </TextField>
           <Divider />
+          <Typography variant="subtitle2" color="text.secondary">
+            Dispatch (optional)
+          </Typography>
+          <TextField
+            select
+            label="Assign Driver"
+            value={selectedDriverId}
+            onChange={(e) => setSelectedDriverId(e.target.value)}
+            helperText="Dispatch a valet driver now to park this vehicle, or assign later"
+          >
+            <MenuItem value="">— Assign later —</MenuItem>
+            {VALET_DRIVERS.map((driver) => (
+              <MenuItem key={driver.id} value={driver.id}>
+                {driver.name}
+              </MenuItem>
+            ))}
+          </TextField>
           <Typography variant="subtitle2" color="text.secondary">
             Parking Assignment (optional)
           </Typography>

@@ -23,6 +23,8 @@ class AddVehicleRequest(CamelModel):
     area_id: Optional[str] = None
     slot_id: Optional[str] = None
     use_corridor: bool = False
+    valet_id: Optional[str] = None
+    valet_name: Optional[str] = None
 
     @field_validator("vehicle_number")
     @classmethod
@@ -64,6 +66,8 @@ class ParkingSessionResponse(CamelModel):
     slot_number: Optional[str] = None
     is_corridor_parking: bool = False
     current_stage: Optional[ParkingTimelineStage] = None
+    current_valet_id: Optional[str] = None
+    current_valet_name: Optional[str] = None
 
 
 class UpdateSessionRequest(CamelModel):

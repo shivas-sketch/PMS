@@ -61,13 +61,19 @@ def add_vehicle(
         "parking_add vehicle_number=%s wheel_category=%s vehicle_type=%s session_id=%s",
         session.vehicle_number, session.wheel_category, session.vehicle_type, session.session_id,
     )
-    # First timeline entry always records the entry; if a slot was assigned
+    # First timeline entry always records the entry, optionally with the
+    # driver the operator dispatches on the spot; if a slot was assigned
     # immediately the vehicle is already physically parked, so record that
     # too (see spec 15.4 - "if a slot is immediately allocated...").
-    timeline_service.add_event(session.session_id, ParkingTimelineStage.ASSIGNED_FOR_PARKING)
+    timeline_service.add_event(
+        session.session_id,
+        ParkingTimelineStage.ASSIGNED_FOR_PARKING,
+        valet_id=payload.valet_id,
+        valet_name=payload.valet_name,
+    )
     if session.slot_id or session.is_corridor_parking:
         timeline_service.add_event(session.session_id, ParkingTimelineStage.PARKED)
-        session = parking_service.get_vehicle(session.vehicle_number)
+    session = parking_service.get_vehicle(session.vehicle_number)
     return session
 
 
@@ -245,13 +251,26 @@ def create_session_timeline_event(
     return event
 
 
+@router.post("/sessions/{session_id}/assign-for-parking", response_model=ParkingTimelineEventResponse)
+def assign_for_parking(
+    session_id: str,
+    payload: TimelineActionRequest = TimelineActionRequest(),
+    timeline_service: TimelineService = Depends(get_timeline_service),
+) -> ParkingTimelineEventResponse:
+    return timeline_service.assign_for_parking(
+        session_id, valet_id=payload.valet_id, valet_name=payload.valet_name, notes=payload.notes
+    )
+
+
 @router.post("/sessions/{session_id}/accept-parking-request", response_model=ParkingTimelineEventResponse)
 def accept_parking_request(
     session_id: str,
     payload: TimelineActionRequest = TimelineActionRequest(),
     timeline_service: TimelineService = Depends(get_timeline_service),
 ) -> ParkingTimelineEventResponse:
-    return timeline_service.accept_parking_request(session_id, notes=payload.notes)
+    return timeline_service.accept_parking_request(
+        session_id, valet_id=payload.valet_id, valet_name=payload.valet_name, notes=payload.notes
+    )
 
 
 @router.post("/sessions/{session_id}/mark-parked", response_model=ParkingTimelineEventResponse)
@@ -260,7 +279,9 @@ def mark_parked(
     payload: TimelineActionRequest = TimelineActionRequest(),
     timeline_service: TimelineService = Depends(get_timeline_service),
 ) -> ParkingTimelineEventResponse:
-    return timeline_service.mark_parked(session_id, notes=payload.notes)
+    return timeline_service.mark_parked(
+        session_id, valet_id=payload.valet_id, valet_name=payload.valet_name, notes=payload.notes
+    )
 
 
 @router.post("/sessions/{session_id}/request-delivery", response_model=ParkingTimelineEventResponse)
@@ -269,7 +290,9 @@ def request_delivery(
     payload: TimelineActionRequest = TimelineActionRequest(),
     timeline_service: TimelineService = Depends(get_timeline_service),
 ) -> ParkingTimelineEventResponse:
-    return timeline_service.request_delivery(session_id, notes=payload.notes)
+    return timeline_service.request_delivery(
+        session_id, valet_id=payload.valet_id, valet_name=payload.valet_name, notes=payload.notes
+    )
 
 
 @router.post("/sessions/{session_id}/assign-for-delivery", response_model=ParkingTimelineEventResponse)
@@ -300,7 +323,9 @@ def picked_up(
     payload: TimelineActionRequest = TimelineActionRequest(),
     timeline_service: TimelineService = Depends(get_timeline_service),
 ) -> ParkingTimelineEventResponse:
-    return timeline_service.picked_up(session_id, notes=payload.notes)
+    return timeline_service.picked_up(
+        session_id, valet_id=payload.valet_id, valet_name=payload.valet_name, notes=payload.notes
+    )
 
 
 @router.post("/sessions/{session_id}/arrived", response_model=ParkingTimelineEventResponse)
@@ -309,7 +334,9 @@ def arrived(
     payload: TimelineActionRequest = TimelineActionRequest(),
     timeline_service: TimelineService = Depends(get_timeline_service),
 ) -> ParkingTimelineEventResponse:
-    return timeline_service.arrived(session_id, notes=payload.notes)
+    return timeline_service.arrived(
+        session_id, valet_id=payload.valet_id, valet_name=payload.valet_name, notes=payload.notes
+    )
 
 
 @router.post("/sessions/{session_id}/manual-override", response_model=ParkingTimelineEventResponse)
@@ -318,7 +345,9 @@ def manual_override(
     payload: TimelineActionRequest = TimelineActionRequest(),
     timeline_service: TimelineService = Depends(get_timeline_service),
 ) -> ParkingTimelineEventResponse:
-    return timeline_service.manual_override(session_id, notes=payload.notes)
+    return timeline_service.manual_override(
+        session_id, valet_id=payload.valet_id, valet_name=payload.valet_name, notes=payload.notes
+    )
 
 
 @router.post("/sessions/{session_id}/delivered", response_model=ParkingTimelineEventResponse)
@@ -327,7 +356,9 @@ def delivered(
     payload: TimelineActionRequest = TimelineActionRequest(),
     timeline_service: TimelineService = Depends(get_timeline_service),
 ) -> ParkingTimelineEventResponse:
-    event = timeline_service.deliver(session_id, notes=payload.notes)
+    event = timeline_service.deliver(
+        session_id, valet_id=payload.valet_id, valet_name=payload.valet_name, notes=payload.notes
+    )
     logger.info("parking_delivered session_id=%s", session_id)
     return event
 

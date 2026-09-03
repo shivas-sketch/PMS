@@ -142,6 +142,12 @@ def _create_timeline_event_txn(
     }
 
     transaction.set(event_ref, event_payload)
-    transaction.update(session_ref, {"currentStage": stage_value, "updatedAt": now})
+    session_update: Dict[str, Any] = {"currentStage": stage_value, "updatedAt": now}
+    # Preserve the last known valet assignment unless this event explicitly
+    # carries a new one - not every workflow action re-sends valet identity.
+    if valet_id is not None or valet_name is not None:
+        session_update["currentValetId"] = valet_id
+        session_update["currentValetName"] = valet_name
+    transaction.update(session_ref, session_update)
 
     return event_payload
