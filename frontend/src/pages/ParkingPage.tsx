@@ -226,6 +226,8 @@ export function ParkingPage() {
                   const hasAssignedValet = !!session.currentValetId || !!session.currentValetName;
                   const needsParkingDriver =
                     session.currentStage === 'ASSIGNED_FOR_PARKING' && !hasAssignedValet;
+                  const needsDeliveryDriver =
+                    session.currentStage === 'REQUESTED_FOR_DELIVERY' && !hasAssignedValet;
                   const isDriverOnly =
                     stageAction && DRIVER_ONLY_ENDPOINTS.has(stageAction.endpoint) && hasAssignedValet;
                   const isBusy = busy === session.vehicleNumber;
@@ -262,7 +264,7 @@ export function ParkingPage() {
                       <TableCell>
                         {session.currentValetName ? (
                           session.currentValetName
-                        ) : needsParkingDriver ? (
+                        ) : needsParkingDriver || needsDeliveryDriver ? (
                           <Chip size="small" color="warning" variant="outlined" label="Unassigned" />
                         ) : (
                           '—'
@@ -316,10 +318,14 @@ export function ParkingPage() {
                                 </Tooltip>
                               ) : (
                                 stageAction && (
-                                  <Tooltip title={stageAction.label}>
+                                  <Tooltip
+                                    title={
+                                      needsDeliveryDriver ? 'Assign Driver for Delivery' : stageAction.label
+                                    }
+                                  >
                                     <IconButton
                                       size="small"
-                                      color="success"
+                                      color={needsDeliveryDriver ? 'primary' : 'success'}
                                       disabled={isBusy}
                                       onClick={() => {
                                         if (stageAction.endpoint === 'mark-parked' && !session.slotNumber) {

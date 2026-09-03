@@ -143,9 +143,16 @@ def _create_timeline_event_txn(
 
     transaction.set(event_ref, event_payload)
     session_update: Dict[str, Any] = {"currentStage": stage_value, "updatedAt": now}
-    # Preserve the last known valet assignment unless this event explicitly
-    # carries a new one - not every workflow action re-sends valet identity.
-    if valet_id is not None or valet_name is not None:
+    if stage_value == ParkingTimelineStage.REQUESTED_FOR_DELIVERY.value:
+        # A fresh delivery request means nobody has been dispatched to
+        # retrieve the vehicle yet - clear any leftover parking-driver
+        # identity so the operator is prompted to assign a delivery valet.
+        session_update["currentValetId"] = None
+        session_update["currentValetName"] = None
+    elif valet_id is not None or valet_name is not None:
+        # Preserve the last known valet assignment unless this event
+        # explicitly carries a new one - not every workflow action
+        # re-sends valet identity.
         session_update["currentValetId"] = valet_id
         session_update["currentValetName"] = valet_name
     transaction.update(session_ref, session_update)

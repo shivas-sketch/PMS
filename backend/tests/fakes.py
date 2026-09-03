@@ -539,7 +539,10 @@ class FakeTimelineRepository:
             }
             self._events.setdefault(session_id, []).append(payload)
             session["currentStage"] = stage_value
-            if valet_id is not None or valet_name is not None:
+            if stage_value == ParkingTimelineStage.REQUESTED_FOR_DELIVERY.value:
+                session["currentValetId"] = None
+                session["currentValetName"] = None
+            elif valet_id is not None or valet_name is not None:
                 session["currentValetId"] = valet_id
                 session["currentValetName"] = valet_name
             session["updatedAt"] = now
