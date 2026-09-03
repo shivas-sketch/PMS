@@ -49,7 +49,10 @@ export function DriverTasksPage({ driver }: Props) {
       const data = await get<VehicleList>('/parking/vehicles?status=ACTIVE');
       setSessions(
         data.vehicles.filter(
-          (s) => !!s.currentStage && DRIVER_STAGES.includes(s.currentStage) && s.currentValetId === driver.id
+          (s) =>
+            !!s.currentStage &&
+            DRIVER_STAGES.includes(s.currentStage) &&
+            (s.currentValetId === driver.id || s.currentValetName === driver.name)
         )
       );
     } catch (cause) {

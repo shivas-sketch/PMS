@@ -216,10 +216,11 @@ export function ParkingPage() {
               <TableBody>
                 {sessions.map((session) => {
                   const stageAction = session.currentStage ? NEXT_STAGE_ACTION[session.currentStage] : undefined;
+                  const hasAssignedValet = !!session.currentValetId || !!session.currentValetName;
                   const needsParkingDriver =
-                    session.currentStage === 'ASSIGNED_FOR_PARKING' && !session.currentValetId;
+                    session.currentStage === 'ASSIGNED_FOR_PARKING' && !hasAssignedValet;
                   const isDriverOnly =
-                    stageAction && DRIVER_ONLY_ENDPOINTS.has(stageAction.endpoint) && !!session.currentValetId;
+                    stageAction && DRIVER_ONLY_ENDPOINTS.has(stageAction.endpoint) && hasAssignedValet;
                   const isBusy = busy === session.vehicleNumber;
                   return (
                     <TableRow key={session.sessionId} hover>
