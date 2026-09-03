@@ -77,11 +77,12 @@ const DRIVER_ONLY_ENDPOINTS = new Set([
 
 type DriverAssignMode = 'parking' | 'delivery';
 
-const STATUS_FILTERS = ['ACTIVE', 'EXITED', 'ALL'] as const;
+const VIEW_FILTERS = ['ACTIVE', 'PARKED', 'RETRIEVED', 'ALL'] as const;
+const RETRIEVED_STAGES = new Set(['REQUESTED_FOR_DELIVERY', 'ASSIGNED_FOR_DELIVERY', 'DELIVERY_REQUEST_ACCEPTED', 'PICKED_UP', 'ARRIVED', 'DELIVERED']);
 
 export function ParkingPage() {
   const [sessions, setSessions] = useState<ParkingSession[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string>('ACTIVE');
+  const [viewFilter, setViewFilter] = useState<string>('ACTIVE');
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -98,15 +99,21 @@ export function ParkingPage() {
     setLoading(true);
     setError(undefined);
     try {
-      const query = statusFilter === 'ALL' ? '' : `?status=${statusFilter}`;
+      const statusParam = viewFilter === 'PARKED' ? 'ACTIVE' : viewFilter;
+      const query = statusParam === 'ALL' ? '' : `?status=${statusParam}`;
       const data = await get<VehicleList>(`/parking/vehicles${query}`);
-      setSessions(data.vehicles);
+      const filtered = data.vehicles.filter((s) => {
+        if (viewFilter === 'PARKED') return s.currentStage === 'PARKED';
+        if (viewFilter === 'RETRIEVED') return s.status === 'EXITED' || (s.currentStage && RETRIEVED_STAGES.has(s.currentStage));
+        return true;
+      });
+      setSessions(filtered);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Unable to load parking sessions.');
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [viewFilter]);
 
   useEffect(() => {
     void load();
@@ -157,13 +164,13 @@ export function ParkingPage() {
         <Stack direction="row" spacing={1} alignItems="center">
           <Select
             size="small"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            sx={{ minWidth: 120 }}
+            value={viewFilter}
+            onChange={(e) => setViewFilter(e.target.value)}
+            sx={{ minWidth: 140 }}
           >
-            {STATUS_FILTERS.map((s) => (
+            {VIEW_FILTERS.map((s) => (
               <MenuItem key={s} value={s}>
-                {s}
+                {s.charAt(0) + s.slice(1).toLowerCase()}
               </MenuItem>
             ))}
           </Select>
@@ -188,7 +195,7 @@ export function ParkingPage() {
           <Paper>
             <Box sx={{ px: 2.5, py: 2 }}>
               <Typography variant="h6">
-                {statusFilter === 'ALL' ? 'All Sessions' : `${statusFilter.charAt(0) + statusFilter.slice(1).toLowerCase()} Sessions`}
+                {viewFilter === 'ALL' ? 'All Sessions' : `${viewFilter.charAt(0) + viewFilter.slice(1).toLowerCase()} Sessions`}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 {sessions.length} vehicle(s) listed

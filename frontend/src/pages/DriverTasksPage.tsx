@@ -184,7 +184,7 @@ export function DriverTasksPage({ driver }: Props) {
                         {session.hospitalSide ? ` · ${session.hospitalSide}` : ''}
                       </Typography>
                     </Box>
-                    {action && (
+                    {view === 'pending' && action && (
                       <Button
                         variant="contained"
                         startIcon={isBusy ? <CircularProgress size={16} color="inherit" /> : <PlayArrowOutlinedIcon />}
