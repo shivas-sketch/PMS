@@ -14,6 +14,7 @@ import {
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
 import PlayArrowOutlinedIcon from '@mui/icons-material/PlayArrowOutlined';
 import { get, post, ApiError } from '../api/client';
+import { AssignSlotDialog } from '../components/AssignSlotDialog';
 import type { ParkingSession, ParkingTimelineStage, VehicleList } from '../types';
 import { TIMELINE_STAGE_DISPLAY_NAMES } from '../types';
 import type { ValetIdentity } from '../roles';
@@ -38,6 +39,8 @@ export function DriverTasksPage({ driver }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState<string>();
+  const [slotSession, setSlotSession] = useState<ParkingSession | null>(null);
+  const [pendingEndpoint, setPendingEndpoint] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,6 +66,11 @@ export function DriverTasksPage({ driver }: Props) {
   }, [load]);
 
   const runAction = async (session: ParkingSession, endpoint: string) => {
+    if (endpoint === 'mark-parked' && !session.slotNumber) {
+      setSlotSession(session);
+      setPendingEndpoint(endpoint);
+      return;
+    }
     setBusy(session.sessionId);
     setError(undefined);
     try {
@@ -150,6 +158,37 @@ export function DriverTasksPage({ driver }: Props) {
             );
           })}
         </Stack>
+      )}
+
+      {slotSession && pendingEndpoint && (
+        <AssignSlotDialog
+          session={slotSession}
+          onClose={() => {
+            setSlotSession(null);
+            setPendingEndpoint(null);
+          }}
+          onAssigned={async () => {
+            const session = slotSession;
+            const endpoint = pendingEndpoint;
+            setSlotSession(null);
+            setPendingEndpoint(null);
+            if (!session || !endpoint) return;
+            // Slot assigned; run the originally-intended action.
+            setBusy(session.sessionId);
+            setError(undefined);
+            try {
+              await post(`/parking/sessions/${encodeURIComponent(session.sessionId)}/${endpoint}`, {
+                valetId: driver.id,
+                valetName: driver.name,
+              });
+              await load();
+            } catch (cause) {
+              setError(cause instanceof ApiError ? cause.message : 'Unable to update this task.');
+            } finally {
+              setBusy(undefined);
+            }
+          }}
+        />
       )}
     </Stack>
   );
